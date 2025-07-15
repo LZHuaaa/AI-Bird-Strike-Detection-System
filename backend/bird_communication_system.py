@@ -523,13 +523,17 @@ class AdvancedBirdCommunicationAnalyzer:
                             'start': detection['start_time'],
                             'end': detection['end_time']
                         },
-                        'audio_segment': segment_metadata,  # Include audio segment info
+                        'audio_segment': segment_metadata if segment_metadata else None,
                         'ai_insights': {
                             'call_interpretation': self.interpret_call_meaning(communication_patterns),
                             'threat_assessment': self.assess_threat_level(communication_patterns, behavioral_intent),
                             'recommended_monitoring': self.get_monitoring_recommendations(behavioral_intent)
                         }
                     }
+                    
+                    # Ensure audio_segment['filename'] is present if segment_metadata exists
+                    if segment_metadata and 'filename' in segment_metadata:
+                        alert['audio_segment']['filename'] = segment_metadata['filename']
                     
                     # Store in communication history
                     self.communication_history.append(communication_patterns)

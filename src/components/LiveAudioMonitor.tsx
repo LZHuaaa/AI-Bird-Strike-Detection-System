@@ -766,6 +766,34 @@ const IntegratedBirdMonitor = () => {
   // Add state for critical action modal
   const [criticalActionModal, setCriticalActionModal] = useState<null | { bird: any, action: string }>(null);
 
+  // Add after criticalActionModal state
+  type CriticalCountdownRef = NodeJS.Timeout | null;
+  const [criticalCountdown, setCriticalCountdown] = useState<number | null>(null);
+  const criticalCountdownRef = useRef<CriticalCountdownRef>(null);
+
+  // Update useEffect for criticalActionModal to handle countdown
+  useEffect(() => {
+    if (criticalActionModal) {
+      setCriticalCountdown(5); // Start at 5 seconds
+      if (criticalCountdownRef.current) clearInterval(criticalCountdownRef.current);
+      let seconds = 5;
+      criticalCountdownRef.current = setInterval(() => {
+        seconds -= 1;
+        setCriticalCountdown(seconds);
+        if (seconds <= 0) {
+          clearInterval(criticalCountdownRef.current!);
+          setCriticalCountdown(0);
+        }
+      }, 1000);
+    } else {
+      setCriticalCountdown(null);
+      if (criticalCountdownRef.current) clearInterval(criticalCountdownRef.current);
+    }
+    return () => {
+      if (criticalCountdownRef.current) clearInterval(criticalCountdownRef.current);
+    };
+  }, [criticalActionModal]);
+
   // Effect to detect high risk and show modal for new, recent alerts only
   useEffect(() => {
     if (detectedBirds.length > 0) {
@@ -1212,7 +1240,14 @@ const IntegratedBirdMonitor = () => {
               <Button
                 variant={isRecording ? "destructive" : "default"}
                 size="sm"
-                onClick={() => setIsRecording(!isRecording)}
+                onClick={() => {
+                  setIsRecording(!isRecording);
+                  if (isRecording && wsConnection) {
+                    wsConnection.close();
+                  } else if (!isRecording) {
+                    connectWebSocket();
+                  }
+                }}
                 disabled={!isConnected}
               >
                 {isRecording ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
@@ -1516,13 +1551,17 @@ const IntegratedBirdMonitor = () => {
               CRITICAL RISK DETECTED!
             </h2>
             <p className="mb-4">
-
               <span className="text-lg font-bold text-black-800">{criticalActionModal.action}</span>
+              <br />
+              <span className="text-red-600 font-semibold">
+                You can respond in {criticalCountdown !== null ? criticalCountdown : 5} seconds...
+              </span>
             </p>
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={() => setCriticalActionModal(null)}
+                disabled={criticalCountdown !== 0}
               >
                 Deny
               </Button>
@@ -1532,6 +1571,7 @@ const IntegratedBirdMonitor = () => {
                   setCriticalActionModal(null);
                   // Optionally, show a toast or feedback here
                 }}
+                disabled={criticalCountdown !== 0}
               >
                 Allow
               </Button>

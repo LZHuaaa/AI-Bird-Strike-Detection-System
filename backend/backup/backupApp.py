@@ -26,7 +26,7 @@ import logging
 from bird_communication_system import AdvancedBirdCommunicationAnalyzer
 from db import DatabaseManager, BirdImageService, BirdAlert, BirdSpecies
 from audio_analysis import classify_audio_segment
-from gemini_utils import get_call_interpretation, get_bird_encyclopedia
+from backend.utils.gemini_utils import get_call_interpretation, get_bird_encyclopedia
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

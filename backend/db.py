@@ -80,6 +80,9 @@ class BirdDetection(Base):
     
     # Location type
     location_type = Column(String, default="airport")
+
+    # NEW: Audio segment filename for playback
+    audio_segment_filename = Column(String, nullable=True)
     
     # Relationships
     species = relationship("BirdSpecies", back_populates="detections")

@@ -10,6 +10,14 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from fastapi import UploadFile, File
 from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+import statistics
+from pydantic import BaseModel
+
 import librosa
 import numpy as np
 import json
@@ -24,9 +32,11 @@ import os
 
 # Import enhanced detection system and DB manager
 from bird_communication_system import AdvancedBirdCommunicationAnalyzer
-from db import DatabaseManager, BirdImageService, BirdAlert, BirdSpecies, PredatorSoundEvent
-from gemini_utils import get_call_interpretation, get_bird_encyclopedia
-from service.strategic_service import strategic_service
+from db import get_db,DatabaseManager, BirdImageService, BirdAlert, BirdSpecies, PredatorSoundEvent, RunwayRiskAssessment, WeatherData, BirdDetection, RiskPrediction, Runway
+from utils.gemini_utils import get_call_interpretation, get_bird_encyclopedia
+from services.strategic_service import strategic_service
+from services.weather_service import WeatherService
+from services.alert_templates import get_response_template
 from fastapi.responses import FileResponse, JSONResponse
 
 
@@ -180,6 +190,9 @@ def enhanced_websocket_alert_handler(alert: Dict):
         alert['image_data'] = getattr(species, 'image_data', None)
 
         # --- NEW: Always save a detection before saving an alert ---
+        audio_segment_filename = None
+        if 'audio_segment' in alert and alert['audio_segment'] and 'filename' in alert['audio_segment']:
+            audio_segment_filename = alert['audio_segment']['filename']
         detection_data = {
             'species_id': species.id,
             'timestamp': datetime.fromisoformat(alert['timestamp']),
@@ -199,6 +212,7 @@ def enhanced_websocket_alert_handler(alert: Dict):
             'time_of_day': None,
             'season': None,
             'group_behavior': alert.get('communication_analysis', {}).get('flock_communication'),
+            'audio_segment_filename': audio_segment_filename
         }
         detection = db_manager.add_detection(detection_data)
         # --- END NEW ---
@@ -847,8 +861,8 @@ def serialize_enhanced_alert(alert):
             "risk_score": alert.risk_score,
             "recommended_action": alert.recommended_action,
             "species": {
-                "common": alert.species.common_name,
-                "scientific": alert.species.scientific_name
+                "common": alert.species.common_name if alert.species else "Unknown",
+                "scientific": alert.species.scientific_name if alert.species else "Unknown"
             },
             "acknowledged": alert.acknowledged,
             "resolved": alert.resolved,
@@ -856,21 +870,24 @@ def serialize_enhanced_alert(alert):
         }
         
         # Add AI analysis if available
+        ai_data = None
         if hasattr(alert, 'ai_analysis') and alert.ai_analysis:
             try:
                 ai_data = json.loads(alert.ai_analysis)
                 base_alert.update(ai_data)
             except (json.JSONDecodeError, AttributeError):
                 pass
-            
-        # Try to extract audio_segment from ai_analysis or base_alert
         
+        # Try to extract audio_segment from ai_analysis or base_alert
         audio_segment = None
         if ai_data and isinstance(ai_data.get('audio_segment'), dict):
             audio_segment = ai_data['audio_segment']
         elif isinstance(base_alert.get('audio_segment'), dict):
             audio_segment = base_alert['audio_segment']
-        if audio_segment and audio_segment.get('segment_id'):
+        # NEW: If detection has audio_segment_filename, add audio_url
+        if hasattr(alert, 'detection') and alert.detection and getattr(alert.detection, 'audio_segment_filename', None):
+            base_alert['audio_url'] = f"http://localhost:8000/api/audio-segment/{alert.detection.audio_segment_filename}/play"
+        elif audio_segment and audio_segment.get('segment_id'):
             base_alert['audio_segment'] = audio_segment
             base_alert['audio_url'] = f"http://localhost:5000/api/audio-segment/{audio_segment['segment_id']}/play"
         return base_alert
@@ -1097,6 +1114,460 @@ async def play_audio_segment(segment_id: str):
         return JSONResponse({"success": False, "error": "Audio file not found"}, status_code=404)
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)   
+    
+"""Risk assessment Part"""
+# Initialize weather service
+weather_service = WeatherService()
+
+@app.get("/api/risk-assessment/overall")
+def get_overall_risk(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get overall risk assessment including current risk level and contributing factors"""
+    try:
+        # Get latest risk assessments for all runways
+        latest_assessments = (
+            db.query(RunwayRiskAssessment)
+            .order_by(RunwayRiskAssessment.timestamp.desc())
+            .limit(10)
+            .all()
+        )
+        
+        if not latest_assessments:
+            return {
+                "overall_risk": 0,
+                "risk_factors": [],
+                "status": "No recent risk assessments available"
+            }
+
+        # Calculate overall risk as average of recent assessments
+        risk_scores = [assessment.overall_risk_score for assessment in latest_assessments]
+        overall_risk = int(statistics.mean(risk_scores))
+
+        # Get risk factors with trends
+        risk_factors = [
+            {
+                "name": "Bird Activity Level",
+                "value": int(statistics.mean([a.bird_activity_risk for a in latest_assessments])),
+                "trend": "up" if any(a.bird_activity_risk > 30 for a in latest_assessments) else "stable",
+                "description": "Based on recent bird activity patterns"
+            },
+            {
+                "name": "Weather Impact",
+                "value": int(statistics.mean([a.weather_risk for a in latest_assessments])),
+                "trend": "stable",
+                "description": "Current weather conditions impact"
+            },
+            {
+                "name": "Seasonal Migration",
+                "value": int(statistics.mean([a.seasonal_risk for a in latest_assessments])),
+                "trend": "up" if any(a.seasonal_risk > 40 for a in latest_assessments) else "stable",
+                "description": "Migration season impact"
+            },
+            {
+                "name": "Flight Schedule Density",
+                "value": int(statistics.mean([a.traffic_density_risk for a in latest_assessments])),
+                "trend": "down" if all(a.traffic_density_risk < 30 for a in latest_assessments) else "stable",
+                "description": "Based on current flight schedule"
+            }
+        ]
+
+        return {
+            "overall_risk": overall_risk,
+            "risk_factors": risk_factors,
+            "status": "success"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/risk-assessment/alerts")
+def get_active_alerts(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get current active alerts"""
+    try:
+        # Get unresolved alerts from last 24 hours
+        recent_alerts = (
+            db.query(BirdAlert)
+            .filter(
+                BirdAlert.resolved == False,
+                BirdAlert.timestamp >= datetime.utcnow() - timedelta(hours=24)
+            )
+            .order_by(BirdAlert.timestamp.desc())
+            .all()
+        )
+
+        alerts = []
+        for alert in recent_alerts:
+            try:
+                alerts.append({
+                    "id": alert.id,  # Add the alert ID from the database
+                    "level": alert.alert_level.lower() if alert.alert_level else "low",
+                    "message": alert.recommended_action or "Monitor situation",
+                    "time": alert.timestamp.strftime("%H:%M") if alert.timestamp else "N/A",
+                    "runway": alert.detection.runway_name if alert.detection else "General Area",
+                    "risk_score": alert.risk_score or 0
+                })
+            except Exception as e:
+                print(f"Error processing alert {alert.id}: {str(e)}")
+                continue
+
+        return {"alerts": alerts}
+
+    except Exception as e:
+        print(f"Error in get_active_alerts: {str(e)}")
+        # Return empty alerts instead of throwing error
+        return {"alerts": []}
+
+@app.get("/api/risk-assessment/weather")
+def get_weather_impact(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get current weather conditions and impact"""
+    try:
+        # Get real-time weather data from OpenWeatherMap
+        weather_data = weather_service.get_current_weather()
+        
+        if not weather_data:
+            return {
+                "temperature": 0,
+                "windSpeed": 0,
+                "windDirection": "N/A",
+                "precipitation": 0,
+                "visibility": 0,
+                "birdFavorability": "Low"
+            }
+
+        # Store the weather data in our database for historical tracking
+        db_weather = WeatherData(
+            temperature=weather_data["temperature"],
+            wind_speed=weather_data["windSpeed"],
+            wind_direction=weather_data["windDirection"],
+            precipitation=weather_data["precipitation"],
+            visibility=weather_data["visibility"],
+            bird_favorability_score=weather_data["birdFavorability"],
+            timestamp=weather_data["timestamp"]
+        )
+        db.add(db_weather)
+        db.commit()
+
+        return weather_data
+
+    except Exception as e:
+        print(f"Error in get_weather_impact: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/risk-assessment/runways")
+def get_runway_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get current status for all runways"""
+    try:
+        runways = db.query(Runway).filter(Runway.is_active == True).all()
+        runway_status = []
+
+        for runway in runways:
+            # Get latest risk assessment
+            latest_assessment = (
+                db.query(RunwayRiskAssessment)
+                .filter(RunwayRiskAssessment.runway_id == runway.id)
+                .order_by(RunwayRiskAssessment.timestamp.desc())
+                .first()
+            )
+
+            # Count active birds near runway
+            active_birds = (
+                db.query(BirdDetection)
+                .filter(
+                    BirdDetection.timestamp >= datetime.utcnow() - timedelta(hours=1),
+                    BirdDetection.distance_from_runway <= runway.approach_zone_length
+                )
+                .count()
+            )
+
+            # Get latest incident
+            latest_incident = (
+                db.query(BirdAlert)
+                .filter(
+                    BirdAlert.detection.has(
+                        BirdDetection.distance_from_runway <= runway.approach_zone_length
+                    )
+                )
+                .order_by(BirdAlert.timestamp.desc())
+                .first()
+            )
+
+            status = {
+                "name": runway.runway_name,
+                "risk": int(latest_assessment.overall_risk_score) if latest_assessment else 0,
+                "status": "caution" if (latest_assessment and latest_assessment.overall_risk_score > 20) else "clear",
+                "birdCount": active_birds,
+                "lastIncident": "Never" if not latest_incident else _format_time_ago(latest_incident.timestamp)
+            }
+            runway_status.append(status)
+
+        return {"runways": runway_status}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/risk-assessment/map/{runway_name}")
+def get_runway_map_data(runway_name: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get detailed map data for a specific runway"""
+    try:
+        # Handle combined runway names (e.g., "09L/27R")
+        runway = db.query(Runway).filter(Runway.runway_name == runway_name).first()
+        if not runway:
+            # If exact match not found, try matching the first part of the name
+            runway_parts = runway_name.split('/')
+            runway = db.query(Runway).filter(Runway.runway_name.like(f"%{runway_parts[0]}%")).first()
+            
+        if not runway:
+            raise HTTPException(status_code=404, detail=f"Runway {runway_name} not found")
+
+        # Get active birds near runway
+        active_birds = (
+            db.query(BirdDetection)
+            .filter(
+                BirdDetection.timestamp >= datetime.utcnow() - timedelta(hours=1),
+                BirdDetection.distance_from_runway <= runway.approach_zone_length
+            )
+            .all()
+        )
+
+        # Get latest risk assessment
+        latest_assessment = (
+            db.query(RunwayRiskAssessment)
+            .filter(RunwayRiskAssessment.runway_id == runway.id)
+            .order_by(RunwayRiskAssessment.timestamp.desc())
+            .first()
+        )
+
+        # Format bird positions for frontend
+        bird_positions = []
+        for bird in active_birds:
+            # Scale bird positions to fit the map view
+            scaled_x = bird.location_x * (runway.length / 2000) + runway.length / 2
+            scaled_y = bird.location_y * (runway.width / 1000) + runway.width / 2
+            
+            bird_positions.append({
+                "id": bird.id,
+                "x": scaled_x,
+                "y": scaled_y,
+                "altitude": None,  # Not tracked in current schema
+                "direction": bird.direction or "N/A",
+                "risk_level": "HIGH" if bird.distance_from_runway < runway.side_clearance else "MEDIUM"
+            })
+
+        # Define risk zones based on latest assessment
+        risk_zones = []
+        if latest_assessment:
+            # Create approach zone
+            approach_zone = {
+                "type": "high_risk",
+                "coordinates": [
+                    {"x": 0, "y": -runway.approach_zone_width/2},
+                    {"x": runway.approach_zone_length, "y": -runway.approach_zone_width/2},
+                    {"x": runway.approach_zone_length, "y": runway.approach_zone_width/2},
+                    {"x": 0, "y": runway.approach_zone_width/2}
+                ]
+            }
+            risk_zones.append(approach_zone)
+
+            # Create runway zone
+            runway_zone = {
+                "type": "caution",
+                "coordinates": [
+                    {"x": 0, "y": -runway.width/2},
+                    {"x": runway.length, "y": -runway.width/2},
+                    {"x": runway.length, "y": runway.width/2},
+                    {"x": 0, "y": runway.width/2}
+                ]
+            }
+            risk_zones.append(runway_zone)
+
+            # Add side clearance zones if risk is high
+            if latest_assessment.overall_risk_score > 50:
+                left_zone = {
+                    "type": "caution",
+                    "coordinates": [
+                        {"x": 0, "y": -runway.width/2 - runway.side_clearance},
+                        {"x": runway.length, "y": -runway.width/2 - runway.side_clearance},
+                        {"x": runway.length, "y": -runway.width/2},
+                        {"x": 0, "y": -runway.width/2}
+                    ]
+                }
+                right_zone = {
+                    "type": "caution",
+                    "coordinates": [
+                        {"x": 0, "y": runway.width/2},
+                        {"x": runway.length, "y": runway.width/2},
+                        {"x": runway.length, "y": runway.width/2 + runway.side_clearance},
+                        {"x": 0, "y": runway.width/2 + runway.side_clearance}
+                    ]
+                }
+                risk_zones.extend([left_zone, right_zone])
+
+        return {
+            "runway": {
+                "name": runway.runway_name,
+                "length": runway.length,
+                "width": runway.width,
+                "orientation": runway.orientation
+            },
+            "bird_positions": bird_positions,
+            "risk_zones": risk_zones,
+            "risk_level": latest_assessment.overall_risk_score if latest_assessment else 0
+        }
+
+    except Exception as e:
+        print(f"Error in get_runway_map_data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/risk-assessment/history/{runway_name}")
+def get_runway_history(
+    runway_name: str, 
+    days: int = 7, 
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get historical data for a specific runway"""
+    try:
+        runway = db.query(Runway).filter(Runway.runway_name == runway_name).first()
+        if not runway:
+            raise HTTPException(status_code=404, detail=f"Runway {runway_name} not found")
+
+        # Get historical risk assessments
+        start_date = datetime.utcnow() - timedelta(days=days)
+        historical_assessments = (
+            db.query(RunwayRiskAssessment)
+            .filter(
+                RunwayRiskAssessment.runway_id == runway.id,
+                RunwayRiskAssessment.timestamp >= start_date
+            )
+            .order_by(RunwayRiskAssessment.timestamp.asc())
+            .all()
+        )
+
+        # Get bird incidents
+        incidents = (
+            db.query(BirdAlert)
+            .filter(
+                BirdAlert.runway_id == runway.id,
+                BirdAlert.timestamp >= start_date,
+                BirdAlert.alert_level.in_(["HIGH", "CRITICAL"])
+            )
+            .all()
+        )
+
+        # Group data by date
+        history = []
+        current_date = start_date
+        while current_date <= datetime.utcnow():
+            day_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            
+            # Get assessments for this day
+            day_assessments = [
+                a for a in historical_assessments 
+                if day_start <= a.timestamp < day_end
+            ]
+            
+            # Get incidents for this day
+            day_incidents = len([
+                i for i in incidents 
+                if day_start <= i.timestamp < day_end
+            ])
+
+            if day_assessments:
+                avg_risk = statistics.mean([a.overall_risk_score for a in day_assessments])
+                max_birds = max([a.bird_count or 0 for a in day_assessments])
+                
+                history.append({
+                    "date": day_start.strftime("%Y-%m-%d"),
+                    "risk_level": round(avg_risk),
+                    "bird_count": max_birds,
+                    "incidents": day_incidents
+                })
+            
+            current_date += timedelta(days=1)
+
+        return {
+            "runway_name": runway_name,
+            "history": history
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AlertResponse(BaseModel):
+    alert_id: int
+    action_taken: str
+    notes: str = None
+    template_key: Optional[str] = None
+
+@app.post("/api/risk-assessment/alerts/{alert_id}/respond")
+def respond_to_alert(alert_id: int, response: AlertResponse, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Handle response to an alert"""
+    try:
+        alert = db.query(BirdAlert).filter(BirdAlert.id == alert_id).first()
+        if not alert:
+            raise HTTPException(status_code=404, detail="Alert not found")
+
+        # Get template if specified
+        template_data = {}
+        if response.template_key:
+            template_data = get_response_template(response.template_key)
+            if not template_data:
+                raise HTTPException(status_code=400, detail=f"Invalid template key: {response.template_key}")
+
+        # Update alert with response
+        alert.acknowledged = True
+        alert.acknowledged_at = datetime.utcnow()
+        alert.action_taken = response.action_taken
+        alert.resolved = True
+        alert.resolved_at = datetime.utcnow()
+
+        # Apply template-specific updates if available
+        if template_data and "status_update" in template_data:
+            status_update = template_data["status_update"]
+            
+            # Update alert level if specified
+            if "alert_level" in status_update:
+                alert.alert_level = status_update["alert_level"]
+            
+            # Adjust risk score if specified
+            if "risk_score_adjustment" in status_update:
+                new_risk_score = max(0, min(100, alert.risk_score + status_update["risk_score_adjustment"]))
+                alert.risk_score = new_risk_score
+
+            # Add template info to notes
+            template_notes = template_data.get("notes", "")
+            alert.notes = f"{response.notes}\n\nTemplate: {response.template_key}\n{template_notes}" if response.notes else template_notes
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": "Alert response recorded successfully",
+            "alert": {
+                "id": alert.id,
+                "level": alert.alert_level,
+                "risk_score": alert.risk_score,
+                "action_taken": alert.action_taken,
+                "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+def _format_time_ago(timestamp: datetime) -> str:
+    """Format time difference as human readable string"""
+    now = datetime.utcnow()
+    diff = now - timestamp
+
+    if diff.days > 0:
+        return f"{diff.days} days ago"
+    elif diff.seconds >= 3600:
+        hours = diff.seconds // 3600
+        return f"{hours} hours ago"
+    else:
+        minutes = diff.seconds // 60
+        return f"{minutes} minutes ago"
 
 
 if __name__ == "__main__":
