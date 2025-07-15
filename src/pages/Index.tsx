@@ -5,7 +5,6 @@ import {
   Bird,
   Brain,
   Globe,
-  Palette,
   Radar,
   Radio,
   Settings,
@@ -17,7 +16,6 @@ import aviationHero from '../assets/aviation-hero.jpg';
 import BehaviorAnalytics from '../components/BehaviorAnalytics';
 import BirdTranslator from '../components/BirdTranslator';
 import ControlCenter from '../components/ControlCenter';
-import CreativeHub from '../components/CreativeHub';
 import GlobalNetwork from '../components/GlobalNetwork';
 import LiveAudioMonitor from '../components/LiveAudioMonitor';
 import RiskAssessment from '../components/RiskAssessment';
@@ -133,7 +131,7 @@ const Index = () => {
       <div className="container mx-auto px-6 py-8">
         {/* Enhanced Dashboard Tabs */}
         <Tabs value={activeSystem} onValueChange={setActiveSystem} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7 bg-white/80 backdrop-blur-sm border border-border shadow-lg rounded-xl p-1">
+          <TabsList className="grid w-full grid-cols-6 bg-white/80 backdrop-blur-sm border border-border shadow-lg rounded-xl p-1">
             <TabsTrigger value="monitoring" className="flex items-center space-x-2 data-[state=active]:bg-primary-blue data-[state=active]:text-white rounded-lg transition-all">
               <Radio className="w-4 h-4" />
               <span>Live Monitor</span>
@@ -149,10 +147,6 @@ const Index = () => {
             <TabsTrigger value="analytics" className="flex items-center space-x-2 data-[state=active]:bg-primary-blue data-[state=active]:text-white rounded-lg transition-all">
               <TrendingUp className="w-4 h-4" />
               <span>Analytics</span>
-            </TabsTrigger>
-            <TabsTrigger value="creative" className="flex items-center space-x-2 data-[state=active]:bg-primary-blue data-[state=active]:text-white rounded-lg transition-all">
-              <Palette className="w-4 h-4" />
-              <span>Creative Hub</span>
             </TabsTrigger>
             <TabsTrigger value="network" className="flex items-center space-x-2 data-[state=active]:bg-primary-blue data-[state=active]:text-white rounded-lg transition-all">
               <Globe className="w-4 h-4" />
@@ -178,10 +172,6 @@ const Index = () => {
 
           <TabsContent value="analytics">
             <BehaviorAnalytics />
-          </TabsContent>
-
-          <TabsContent value="creative">
-            <CreativeHub />
           </TabsContent>
 
           <TabsContent value="network">

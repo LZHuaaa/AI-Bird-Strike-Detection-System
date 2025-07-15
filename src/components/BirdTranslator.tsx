@@ -22,6 +22,27 @@ type SpeciesPattern = {
 
 type CommunicationPatterns = Record<string, SpeciesPattern>;
 
+// Add new types for sound deterrent effectiveness
+
+type PredatorSoundEffectiveness = {
+  species: string;
+  sound_type: string;
+  effectiveness: number;
+  behavior_context: string;
+  timestamp: string;
+  location_type: string;
+};
+
+type SpeciesEffectiveness = {
+  common_name: string;
+  scientific_name: string;
+  recommended_sounds: string[];
+  effectiveness_by_sound: Record<string, number>;
+  effectiveness_by_behavior: Record<string, number>;
+  total_events: number;
+  average_effectiveness: number;
+};
+
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +93,10 @@ const BirdTranslator = () => {
   // Backend API configuration
   const API_BASE = 'http://localhost:8000/api';
   const WS_URL = 'ws://localhost:8000/ws';
+
+  // Add state for sound deterrent effectiveness
+  const [soundEffectiveness, setSoundEffectiveness] = useState<SpeciesEffectiveness[]>([]);
+  const [isLoadingEffectiveness, setIsLoadingEffectiveness] = useState(false);
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -332,6 +357,63 @@ const BirdTranslator = () => {
     }
   };
 
+  // Helper: Play recommended sound for a species
+  const playRecommendedSound = async (species: string, behavior: string, sound: string) => {
+    try {
+      await fetch(`${AUDIO_API_BASE}/strategic/activate-predator-sound`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sound_type: sound })
+      });
+    } catch (err) {
+      console.error('Failed to play sound:', err);
+    }
+  };
+
+  // Fetch effectiveness data for each species in recent translations
+  const fetchSoundEffectiveness = async () => {
+    setIsLoadingEffectiveness(true);
+    try {
+      // Fetch environment-wide stats
+      const envRes = await fetch(`${AUDIO_API_BASE}/strategic/effectiveness-by-environment?location_type=airport`);
+      const envData = await envRes.json();
+      // Get unique species from recentTranslations
+      const uniqueSpecies = Array.from(new Set(recentTranslations.map(t => t.species)));
+      // For each species, fetch recommended sounds and effectiveness
+      const speciesEffectiveness: SpeciesEffectiveness[] = await Promise.all(
+        uniqueSpecies.map(async (speciesName) => {
+          // Find a recent translation for context
+          const translation = recentTranslations.find(t => t.species === speciesName);
+          const behavior = translation?.context || '';
+          // Fetch recommended sounds
+          const soundsRes = await fetch(`${AUDIO_API_BASE}/strategic/recommended-sounds?species=${encodeURIComponent(speciesName)}&behavior=${encodeURIComponent(behavior)}`);
+          const soundsData = await soundsRes.json();
+          // Fetch effectiveness by sound (simulate or extend backend as needed)
+          // For now, use envData for all
+          return {
+            common_name: speciesName,
+            scientific_name: speciesName, // If available, use translation.scientific_name
+            recommended_sounds: soundsData.sounds || [],
+            effectiveness_by_sound: {}, // Extend if backend supports
+            effectiveness_by_behavior: {}, // Extend if backend supports
+            total_events: envData.event_count || 0,
+            average_effectiveness: envData.average_effectiveness || 0
+          };
+        })
+      );
+      setSoundEffectiveness(speciesEffectiveness);
+    } catch (error) {
+      console.error('Error fetching sound effectiveness:', error);
+    } finally {
+      setIsLoadingEffectiveness(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSoundEffectiveness();
+    // eslint-disable-next-line
+  }, [recentTranslations]);
+
   return (
     <div className="space-y-6">
       {/* Connection Status */}
@@ -465,11 +547,12 @@ const BirdTranslator = () => {
 
       {/* Analysis Tabs */}
       <Tabs defaultValue="recent" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5"> {/* Increased to 5 for new tab */}
           <TabsTrigger value="recent">Recent Calls</TabsTrigger>
           <TabsTrigger value="patterns">Communication Patterns</TabsTrigger>
           <TabsTrigger value="insights">AI Insights</TabsTrigger>
           <TabsTrigger value="stats">System Stats</TabsTrigger>
+          <TabsTrigger value="deterrent">Sound Deterrent</TabsTrigger>
         </TabsList>
 
         <TabsContent value="recent">
@@ -806,6 +889,105 @@ const BirdTranslator = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="deterrent">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Volume2 className="w-6 h-6 mr-3 text-purple-500" />
+                Predator Sound Effectiveness
+              </CardTitle>
+              <CardDescription>
+                Adaptive sound selection and effectiveness analysis
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {isLoadingEffectiveness ? (
+                  <div className="text-center py-8">
+                    <p>Loading effectiveness data...</p>
+                  </div>
+                ) : soundEffectiveness.length > 0 ? (
+                  soundEffectiveness.map((species) => (
+                    <div key={species.common_name} className="p-6 border rounded-lg bg-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-lg text-blue-800">
+                          {species.common_name}
+                        </h3>
+                        <Badge className={species.average_effectiveness > 70 ? 'bg-green-500 text-white' : 'bg-yellow-400 text-black'}>
+                          {Math.round(species.average_effectiveness)}% Effective
+                        </Badge>
+                      </div>
+                      {/* Recommended Sounds */}
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-slate-600 mb-2">
+                          Recommended Sounds
+                        </h4>
+                        <div className="flex gap-2">
+                          {species.recommended_sounds.map((sound) => (
+                            <Badge key={sound} variant="outline" className="bg-purple-50">
+                              {sound.replace('_', ' ')}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Effectiveness by Behavior */}
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-slate-600 mb-2">
+                          Effectiveness by Behavior
+                        </h4>
+                        <div className="space-y-2">
+                          {Object.entries(species.effectiveness_by_behavior).length === 0 ? (
+                            <span className="text-slate-400">No breakdown available</span>
+                          ) : (
+                            Object.entries(species.effectiveness_by_behavior).map(([behavior, effectiveness]) => (
+                              <div key={behavior} className="flex items-center justify-between">
+                                <span className="text-sm">{behavior.replace('_', ' ')}</span>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-24 h-2 bg-gray-100 rounded-full">
+                                    <div
+                                      className="h-2 bg-purple-500 rounded-full"
+                                      style={{ width: `${effectiveness}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-sm font-medium">{Math.round(effectiveness)}%</span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                      {/* Usage Stats */}
+                      <div className="mt-4 pt-4 border-t">
+                        <div className="flex items-center justify-between text-sm text-slate-600">
+                          <span>Total Events: {species.total_events}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="hover:bg-purple-50 hover:text-purple-600"
+                            onClick={() => {
+                              if (species.recommended_sounds.length > 0) {
+                                playRecommendedSound(species.common_name, '', species.recommended_sounds[0]);
+                              }
+                            }}
+                          >
+                            <Volume2 className="w-4 h-4 mr-2" />
+                            Play Recommended Sound
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-slate-500">
+                    <Volume2 className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                    <p>No effectiveness data available</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
