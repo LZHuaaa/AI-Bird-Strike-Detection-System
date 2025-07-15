@@ -1,3 +1,8 @@
+# Build tools (ALWAYS put these at the top if errors happen on Render)
+setuptools>=42
+wheel
+build
+
 # 📌 Note: PyAudio may fail on Windows if installed via pip.
 # ✅ To install PyAudio, use:
 # pip install pipwin
