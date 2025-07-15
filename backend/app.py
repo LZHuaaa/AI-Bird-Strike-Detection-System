@@ -282,6 +282,8 @@ def enhanced_websocket_alert_handler(alert: Dict):
         species_key = alert['species']['scientific']
         if species_key not in behavioral_patterns:
             behavioral_patterns[species_key] = {
+                'common_name': alert['species']['common'],
+                'scientific_name': species_key,
                 'intents': {},
                 'communication_types': {},
                 'risk_factors': []

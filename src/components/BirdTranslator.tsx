@@ -14,6 +14,8 @@ type SystemStats = {
 };
 
 type SpeciesPattern = {
+  common_name?: string;
+  scientific_name?: string;
   intents?: Record<string, number>;
   communication_types?: Record<string, number>;
 };
@@ -587,12 +589,14 @@ const BirdTranslator = () => {
               <div className="space-y-6">
                 {Object.entries(communicationPatterns).length > 0 ? (
                   Object.entries(communicationPatterns).map(([species, patterns]) => {
-                    // Extract common name and scientific name
-                    const commonName = recentTranslations.find(t => t.species?.scientific === species)?.species?.common || 'Unknown Bird';
+                    // Get common name directly from patterns data
+                    const commonName = patterns.common_name || species.split(' ').map(word => 
+                      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                    ).join(' ');
                     return (
                     <div key={species} className="p-6 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 transition-colors">
                       <h3 className="font-semibold text-lg text-blue-800 mb-4">
-                        {commonName} <span className="text-sm text-slate-600 italic">({species})</span>
+                        {commonName} <span className="text-sm text-slate-600 italic">({patterns.scientific_name || species})</span>
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white p-4 rounded-lg shadow-sm">
