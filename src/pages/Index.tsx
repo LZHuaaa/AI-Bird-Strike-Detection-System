@@ -101,7 +101,7 @@ const Index = () => {
 
       {/* Status Bar */}
       <div className="bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-6 py-2">
           <div className="flex items-center justify-between bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-border/50">
             <div className="flex items-center space-x-8">
               <div className="flex items-center space-x-2">

@@ -27,21 +27,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-    AlertTriangle,
-    Brain,
-    Heart,
-    MessageSquare,
-    Music,
-    Pause,
-    Play,
-    TreePine,
-    Volume2,
-    Wifi,
-    WifiOff
+  AlertTriangle,
+  Brain,
+  Heart,
+  MessageSquare,
+  Music,
+  Pause,
+  Play,
+  TreePine,
+  Volume2,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-const AUDIO_API_BASE = "http://localhost:5000/api";
+const AUDIO_API_BASE = "http://localhost:8000/api";
 
 const BirdTranslator = () => {
   // Connection state
@@ -135,7 +135,9 @@ const BirdTranslator = () => {
         riskScore: data.risk_score,
         behavioralPrediction: data.behavioral_prediction,
         aiInsights: data.ai_insights,
-        imageData: data.image_data
+        imageData: data.image_data,
+        audio_url: data.audio_url || (data.audio_segment && data.audio_segment.segment_id ? `${AUDIO_API_BASE}/audio-segment/${data.audio_segment.segment_id}/play` : undefined),
+        audio_segment: data.audio_segment
       };
 
       setCurrentTranslation(newTranslation);
@@ -151,7 +153,10 @@ const BirdTranslator = () => {
           confidence: newTranslation.confidence,
           timestamp: newTranslation.timestamp,
           alertLevel: newTranslation.alertLevel,
-          riskScore: newTranslation.riskScore
+          riskScore: newTranslation.riskScore,
+          id: data.id,
+          audio_url: newTranslation.audio_url,
+          audio_segment: newTranslation.audio_segment
         },
         ...prev.slice(0, 9)
       ]);
@@ -205,7 +210,9 @@ const BirdTranslator = () => {
       timestamp: new Date(alert.timestamp).toLocaleTimeString(),
       alertLevel: alert.alert_level,
       riskScore: alert.risk_score,
-      id: alert.id
+      id: alert.id,
+      audio_url: alert.audio_url || (alert.audio_segment && alert.audio_segment.segment_id ? `${AUDIO_API_BASE}/audio-segment/${alert.audio_segment.segment_id}/play` : undefined),
+      audio_segment: alert.audio_segment
     }));
 
     setRecentTranslations(processedTranslations);
@@ -219,7 +226,9 @@ const BirdTranslator = () => {
         emotion: latest.emotion,
         context: latest.context,
         confidence: latest.confidence,
-        timestamp: latest.timestamp
+        timestamp: latest.timestamp,
+        audio_url: latest.audio_url,
+        audio_segment: latest.audio_segment
       });
     }
   };
@@ -399,8 +408,8 @@ const BirdTranslator = () => {
                       <audio controls src={currentTranslation.audio_url} className="mx-auto">
                         Your browser does not support the audio element.
                       </audio>
-                    ) : currentTranslation.audio_base64 ? (
-                      <audio controls src={`data:audio/wav;base64,${currentTranslation.audio_base64}`} className="mx-auto">
+                    ) : currentTranslation.audio_segment && currentTranslation.audio_segment.segment_id ? (
+                      <audio controls src={`${AUDIO_API_BASE}/audio-segment/${currentTranslation.audio_segment.segment_id}/play`} className="mx-auto">
                         Your browser does not support the audio element.
                       </audio>
                     ) : (
@@ -486,7 +495,17 @@ const BirdTranslator = () => {
                           </div>
                           <div className="mb-2">
                             <span className="text-sm text-slate-600">Original: </span>
-                            <span className="font-mono text-sm">"{translation.call}"</span>
+                            {translation.audio_url ? (
+                              <audio controls src={translation.audio_url} className="inline-block align-middle" style={{ height: 24 }}>
+                                Your browser does not support the audio element.
+                              </audio>
+                            ) : translation.audio_segment && translation.audio_segment.segment_id ? (
+                              <audio controls src={`${AUDIO_API_BASE}/audio-segment/${translation.audio_segment.segment_id}/play`} className="inline-block align-middle" style={{ height: 24 }}>
+                                Your browser does not support the audio element.
+                              </audio>
+                            ) : (
+                              <span className="font-mono text-sm">"{translation.call}"</span>
+                            )}
                           </div>
                           <div className="text-slate-700">
                             <span className="text-sm text-slate-600">Translation: </span>

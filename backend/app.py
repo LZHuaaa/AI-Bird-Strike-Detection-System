@@ -19,12 +19,16 @@ import uvicorn
 import random
 from pydantic import BaseModel
 import logging
+import os
+
 
 # Import enhanced detection system and DB manager
 from bird_communication_system import AdvancedBirdCommunicationAnalyzer
 from db import DatabaseManager, BirdImageService, BirdAlert, BirdSpecies, PredatorSoundEvent
 from gemini_utils import get_call_interpretation, get_bird_encyclopedia
 from service.strategic_service import strategic_service
+from fastapi.responses import FileResponse, JSONResponse
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -858,9 +862,19 @@ def serialize_enhanced_alert(alert):
                 base_alert.update(ai_data)
             except (json.JSONDecodeError, AttributeError):
                 pass
+            
+        # Try to extract audio_segment from ai_analysis or base_alert
         
+        audio_segment = None
+        if ai_data and isinstance(ai_data.get('audio_segment'), dict):
+            audio_segment = ai_data['audio_segment']
+        elif isinstance(base_alert.get('audio_segment'), dict):
+            audio_segment = base_alert['audio_segment']
+        if audio_segment and audio_segment.get('segment_id'):
+            base_alert['audio_segment'] = audio_segment
+            base_alert['audio_url'] = f"http://localhost:5000/api/audio-segment/{audio_segment['segment_id']}/play"
         return base_alert
-        
+           
     except Exception as e:
         logger.error(f"Error serializing alert: {e}")
         return {"error": "serialization_failed"}
@@ -1050,6 +1064,40 @@ async def trigger_predator_sound(alert_id: int = None, detection_id: int = None,
     except Exception as e:
         logger.error(f"Error triggering predator sound: {e}")
         return {"success": False, "error": str(e)}
+    
+
+
+AUDIO_SEGMENTS_DIR = os.path.join(os.path.dirname(__file__), "..", "detected_audio_segments")
+
+@app.get("/api/audio-segments")
+async def get_audio_segments():
+    """List all stored audio segments metadata."""
+    try:
+        segments = []
+        for fname in os.listdir(AUDIO_SEGMENTS_DIR):
+            if fname.endswith(".wav"):
+                segments.append({
+                    "filename": fname,
+                    "segment_id": fname.split("_")[-1].replace(".wav", ""),
+                    "file_path": os.path.join(AUDIO_SEGMENTS_DIR, fname)
+                })
+        return {"success": True, "segments": segments, "total_count": len(segments)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/audio-segment/{segment_id}/play")
+async def play_audio_segment(segment_id: str):
+    """Serve audio file for playback."""
+    try:
+        # Find the file by segment_id
+        for fname in os.listdir(AUDIO_SEGMENTS_DIR):
+            if fname.endswith(".wav") and segment_id in fname:
+                file_path = os.path.join(AUDIO_SEGMENTS_DIR, fname)
+                return FileResponse(file_path, media_type="audio/wav", filename=fname)
+        return JSONResponse({"success": False, "error": "Audio file not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)   
+
 
 if __name__ == "__main__":
     uvicorn.run(

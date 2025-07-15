@@ -55,7 +55,7 @@ class AdvancedBirdCommunicationAnalyzer:
         self.RECORD_SECONDS = 3
 
         # Audio storage settings
-        self.AUDIO_STORAGE_DIR = "detected_audio_segments"
+        self.AUDIO_STORAGE_DIR = os.path.join(os.path.dirname(__file__), "..", "detected_audio_segments")
         self.MAX_STORED_SEGMENTS = 100  # Maximum number of segments to store
         self.setup_audio_storage()
 
@@ -899,8 +899,7 @@ def main():
     # Start Flask server in a separate thread
     flask_thread = threading.Thread(target=start_flask_server, daemon=True)
     flask_thread.start()
-    
-    print("🌐 API Server started on http://localhost:5000")
+
     print("\n📋 Available API Endpoints:")
     print("   • GET  /api/audio-segments - Get all stored segments")
     print("   • GET  /api/audio-segment/<id> - Get segment metadata")
