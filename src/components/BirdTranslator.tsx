@@ -27,13 +27,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Activity,
   AlertTriangle,
+  BarChart,
   Brain,
   Heart,
   MessageSquare,
   Music,
   Pause,
   Play,
+  Radio,
+  Signal,
   TreePine,
   Volume2,
   Wifi,
@@ -459,12 +463,11 @@ const BirdTranslator = () => {
 
       {/* Analysis Tabs */}
       <Tabs defaultValue="recent" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="recent">Recent Calls</TabsTrigger>
           <TabsTrigger value="patterns">Communication Patterns</TabsTrigger>
           <TabsTrigger value="insights">AI Insights</TabsTrigger>
           <TabsTrigger value="stats">System Stats</TabsTrigger>
-          <TabsTrigger value="audio">Audio Segments</TabsTrigger>
         </TabsList>
 
         <TabsContent value="recent">
@@ -477,56 +480,88 @@ const BirdTranslator = () => {
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {recentTranslations.length > 0 ? (
                   recentTranslations.map((translation, index) => (
-                    <div key={index} className="p-4 border rounded-lg hover:bg-slate-50 transition-colors">
+                    <div key={index} className="p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors shadow-sm">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <span className="font-semibold text-blue-600">{translation.species}</span>
-                            <div className={`px-2 py-1 rounded-full text-xs text-white ${getEmotionColor(translation.emotion)}`}>
+                          <div className="flex items-center space-x-3 mb-3">
+                            <span className="font-semibold text-blue-700 text-lg">{translation.species?.common || translation.species}</span>
+                            <div className={`px-3 py-1 rounded-full text-xs font-medium text-white ${getEmotionColor(translation.emotion)}`}>
                               {translation.emotion}
                             </div>
                             {translation.alertLevel && (
-                              <div className={`px-2 py-1 rounded-full text-xs text-white ${getAlertLevelColor(translation.alertLevel)}`}>
+                              <div className={`px-3 py-1 rounded-full text-xs font-medium text-white ${getAlertLevelColor(translation.alertLevel)}`}>
                                 {translation.alertLevel}
                               </div>
                             )}
-                            <Badge variant="outline">{translation.confidence}%</Badge>
-                            <span className="text-xs text-slate-500">{translation.timestamp}</span>
+                            <Badge variant="outline" className="bg-white">{translation.confidence}%</Badge>
+                            <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded-full">{translation.timestamp}</span>
                           </div>
-                          <div className="mb-2">
-                            <span className="text-sm text-slate-600">Original: </span>
-                            {translation.audio_url ? (
-                              <audio controls src={translation.audio_url} className="inline-block align-middle" style={{ height: 24 }}>
-                                Your browser does not support the audio element.
-                              </audio>
-                            ) : translation.audio_segment && translation.audio_segment.segment_id ? (
-                              <audio controls src={`${AUDIO_API_BASE}/audio-segment/${translation.audio_segment.segment_id}/play`} className="inline-block align-middle" style={{ height: 24 }}>
-                                Your browser does not support the audio element.
-                              </audio>
-                            ) : (
-                              <span className="font-mono text-sm">"{translation.call}"</span>
-                            )}
+                          
+                          <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
+                            {/* Combined Original Call and Translation */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Volume2 className="w-4 h-4 text-blue-500" />
+                                <span className="text-sm font-medium text-slate-700">Bird Call</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {translation.audio_url ? (
+                                  <audio controls src={translation.audio_url} className="h-8 flex-grow">
+                                    Your browser does not support the audio element.
+                                  </audio>
+                                ) : translation.audio_segment && translation.audio_segment.segment_id ? (
+                                  <audio controls src={`${AUDIO_API_BASE}/audio-segment/${translation.audio_segment.segment_id}/play`} className="h-8 flex-grow">
+                                    Your browser does not support the audio element.
+                                  </audio>
+                                ) : (
+                                  <span className="font-mono text-sm text-slate-600">"{translation.call}"</span>
+                                )}
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  className="bg-white hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-colors"
+                                  onClick={() => {
+                                    const downloadUrl = translation.audio_url 
+                                      ? translation.audio_url.replace('/play', '/download')
+                                      : translation.audio_segment && translation.audio_segment.segment_id
+                                        ? `${AUDIO_API_BASE}/audio-segment/${translation.audio_segment.segment_id}/download`
+                                        : null;
+                                    
+                                    if (downloadUrl) {
+                                      window.open(downloadUrl, '_blank');
+                                    }
+                                  }}
+                                >
+                                  Download
+                                </Button>
+                              </div>
                           </div>
-                          <div className="text-slate-700">
-                            <span className="text-sm text-slate-600">Translation: </span>
-                            <span className="italic">"{translation.translation}"</span>
+
+                            {/* AI Translation and Context */}
+                            <div className="space-y-2 border-t pt-4">
+                              <div className="flex items-center gap-2">
+                                <Brain className="w-4 h-4 text-purple-500" />
+                                <span className="text-sm font-medium text-slate-700">AI Translation</span>
                           </div>
-                          <div className="flex items-center mt-2 text-sm text-slate-500">
+                              <blockquote className="text-slate-600 italic border-l-4 border-purple-200 pl-3">
+                                "{translation.translation}"
+                              </blockquote>
+                              
+                              <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
+                                <div className="flex items-center gap-2">
                             {getContextIcon(translation.context)}
-                            <span className="ml-1">{translation.context.replace('_', ' ')}</span>
+                                  <span className="font-medium">{translation.context.replace('_', ' ')}</span>
+                                </div>
                             {translation.riskScore && (
-                              <span className="ml-4">Risk: {Math.round(translation.riskScore * 100)}%</span>
-                            )}
+                                  <div className="flex items-center gap-1">
+                                    <span>•</span>
+                                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                                    <span>Risk: <span className="font-medium text-amber-600">{Math.round(translation.riskScore * 100)}%</span></span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex flex-col space-y-1">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => translation.id && acknowledgeAlert(translation.id)}
-                          >
-                            Acknowledge
-                          </Button>
                         </div>
                       </div>
                     </div>
@@ -551,35 +586,67 @@ const BirdTranslator = () => {
             <CardContent>
               <div className="space-y-6">
                 {Object.entries(communicationPatterns).length > 0 ? (
-                  Object.entries(communicationPatterns).map(([species, patterns]) => (
-                    <div key={species} className="p-4 border rounded-lg">
-                      <h3 className="font-semibold mb-3">{species}</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="font-medium mb-2">Behavioral Intents</h4>
-                          <div className="space-y-1">
+                  Object.entries(communicationPatterns).map(([species, patterns]) => {
+                    // Extract common name and scientific name
+                    const commonName = recentTranslations.find(t => t.species?.scientific === species)?.species?.common || 'Unknown Bird';
+                    return (
+                    <div key={species} className="p-6 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 transition-colors">
+                      <h3 className="font-semibold text-lg text-blue-800 mb-4">
+                        {commonName} <span className="text-sm text-slate-600 italic">({species})</span>
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-purple-700 mb-3 flex items-center">
+                            <Brain className="w-4 h-4 mr-2" />
+                            Behavioral Intents
+                          </h4>
+                          <div className="space-y-2">
                             {Object.entries(patterns.intents || {}).map(([intent, count]) => (
-                              <div key={intent} className="flex justify-between text-sm">
-                                <span>{intent.replace('_', ' ')}</span>
-                                <span className="font-medium">{count}</span>
+                              <div key={intent} className="flex justify-between items-center text-sm">
+                                <span className="text-slate-700">{intent.replace('_', ' ')}</span>
+                                <div className="flex items-center">
+                                  <div className="w-16 h-2 bg-blue-100 rounded-full mr-2">
+                                    <div 
+                                      className="h-2 bg-blue-500 rounded-full" 
+                                      style={{ 
+                                        width: `${(count / Object.values(patterns.intents || {}).reduce((a, b) => a + b, 0)) * 100}%` 
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="font-medium text-blue-600">{count}</span>
+                                </div>
                               </div>
                             ))}
                           </div>
                         </div>
-                        <div>
-                          <h4 className="font-medium mb-2">Communication Types</h4>
-                          <div className="space-y-1">
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-purple-700 mb-3 flex items-center">
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            Communication Types
+                          </h4>
+                          <div className="space-y-2">
                             {Object.entries(patterns.communication_types || {}).map(([type, count]) => (
-                              <div key={type} className="flex justify-between text-sm">
-                                <span>{type.replace('_', ' ')}</span>
-                                <span className="font-medium">{count}</span>
+                              <div key={type} className="flex justify-between items-center text-sm">
+                                <span className="text-slate-700">{type.replace('_', ' ')}</span>
+                                <div className="flex items-center">
+                                  <div className="w-16 h-2 bg-purple-100 rounded-full mr-2">
+                                    <div 
+                                      className="h-2 bg-purple-500 rounded-full" 
+                                      style={{ 
+                                        width: `${(count / Object.values(patterns.communication_types || {}).reduce((a, b) => a + b, 0)) * 100}%` 
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="font-medium text-purple-600">{count}</span>
+                                </div>
                               </div>
                             ))}
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="text-center py-8 text-slate-500">
                     <Music className="w-12 h-12 mx-auto mb-3 text-slate-300" />
@@ -594,48 +661,58 @@ const BirdTranslator = () => {
         <TabsContent value="insights">
           <Card>
             <CardHeader>
-              <CardTitle>AI Insights</CardTitle>
+              <CardTitle className="flex items-center">
+                <Brain className="w-6 h-6 mr-3 text-purple-500" />
+                AI Insights
+              </CardTitle>
               <CardDescription>Machine learning analysis and insights</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium mb-3">Recent Activity</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Total Communications</span>
-                      <span className="font-medium">{aiInsights.total_communications_analyzed || 0}</span>
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl">
+                  <h4 className="font-medium text-blue-800 mb-4 flex items-center">
+                    <Activity className="w-5 h-5 mr-2" />
+                    Recent Activity
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-slate-700">Total Communications</span>
+                      <span className="font-medium text-blue-600 text-lg">{aiInsights.total_communications_analyzed || 0}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Recent Activity</span>
-                      <span className="font-medium">{aiInsights.recent_activity || 0}</span>
+                    <div className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-slate-700">Recent Activity</span>
+                      <span className="font-medium text-blue-600 text-lg">{aiInsights.recent_activity || 0}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Species Diversity</span>
-                      <span className="font-medium">{aiInsights.species_diversity || 0}</span>
+                    <div className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-slate-700">Species Diversity</span>
+                      <span className="font-medium text-blue-600 text-lg">{aiInsights.species_diversity || 0}</span>
                     </div>
                   </div>
                 </div>
-                <div>
-                  <h4 className="font-medium mb-3">AI Performance</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Classification Accuracy</span>
-                      <span className="font-medium">
+                
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl">
+                  <h4 className="font-medium text-purple-800 mb-4 flex items-center">
+                    <Brain className="w-5 h-5 mr-2" />
+                    AI Performance
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-slate-700">Classification Accuracy</span>
+                      <span className="font-medium text-purple-600 text-lg">
                         {aiInsights.ai_model_performance?.classification_accuracy ? 
                           `${Math.round(aiInsights.ai_model_performance.classification_accuracy * 100)}%` : 'N/A'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Prediction Confidence</span>
-                      <span className="font-medium">
+                    <div className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-slate-700">Prediction Confidence</span>
+                      <span className="font-medium text-purple-600 text-lg">
                         {aiInsights.ai_model_performance?.behavioral_prediction_confidence ? 
                           `${Math.round(aiInsights.ai_model_performance.behavioral_prediction_confidence * 100)}%` : 'N/A'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Analysis Success Rate</span>
-                      <span className="font-medium">
+                    <div className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-slate-700">Analysis Success Rate</span>
+                      <span className="font-medium text-purple-600 text-lg">
                         {aiInsights.ai_model_performance?.communication_analysis_success_rate ? 
                           `${Math.round(aiInsights.ai_model_performance.communication_analysis_success_rate * 100)}%` : 'N/A'}
                       </span>
@@ -650,63 +727,75 @@ const BirdTranslator = () => {
         <TabsContent value="stats">
           <Card>
             <CardHeader>
-              <CardTitle>System Statistics</CardTitle>
+              <CardTitle className="flex items-center">
+                <BarChart className="w-6 h-6 mr-3 text-blue-500" />
+                System Statistics
+              </CardTitle>
               <CardDescription>Backend system performance and metrics</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-medium text-blue-800 mb-2">Detection Stats</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span>Total Detections</span>
-                      <span className="font-medium">{systemStats.total_detections || 0}</span>
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-6 rounded-xl">
+                  <h4 className="font-medium text-blue-800 mb-4 flex items-center">
+                    <Radio className="w-5 h-5 mr-2" />
+                    Detection Stats
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Total Detections</span>
+                      <span className="font-medium text-blue-600">{systemStats.total_detections || 0}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Active Alerts</span>
-                      <span className="font-medium">{systemStats.active_alerts || 0}</span>
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Active Alerts</span>
+                      <span className="font-medium text-blue-600">{systemStats.active_alerts || 0}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Species Identified</span>
-                      <span className="font-medium">{systemStats.species_count || 0}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <h4 className="font-medium text-purple-800 mb-2">AI Statistics</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span>Patterns Analyzed</span>
-                      <span className="font-medium">{systemStats.ai_statistics?.communication_patterns_analyzed || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Behavior Profiles</span>
-                      <span className="font-medium">{systemStats.ai_statistics?.species_behavior_profiles || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Model Status</span>
-                      <span className="font-medium">{systemStats.ai_statistics?.ai_model_status || 'Unknown'}</span>
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Species Identified</span>
+                      <span className="font-medium text-blue-600">{systemStats.species_count || 0}</span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <h4 className="font-medium text-green-800 mb-2">Connection Stats</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span>Active Connections</span>
-                      <span className="font-medium">{systemStats.ai_statistics?.active_monitoring_sessions || 0}</span>
+                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 p-6 rounded-xl">
+                  <h4 className="font-medium text-purple-800 mb-4 flex items-center">
+                    <Brain className="w-5 h-5 mr-2" />
+                    AI Statistics
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Patterns Analyzed</span>
+                      <span className="font-medium text-purple-600">{systemStats.ai_statistics?.communication_patterns_analyzed || 0}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Avg Risk Score</span>
-                      <span className="font-medium">
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Behavior Profiles</span>
+                      <span className="font-medium text-purple-600">{systemStats.ai_statistics?.species_behavior_profiles || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Model Status</span>
+                      <span className="font-medium text-purple-600">{systemStats.ai_statistics?.ai_model_status || 'Unknown'}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl">
+                  <h4 className="font-medium text-green-800 mb-4 flex items-center">
+                    <Signal className="w-5 h-5 mr-2" />
+                    Connection Stats
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Active Connections</span>
+                      <span className="font-medium text-green-600">{systemStats.ai_statistics?.active_monitoring_sessions || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Avg Risk Score</span>
+                      <span className="font-medium text-green-600">
                         {systemStats.ai_statistics?.average_risk_score ? 
                           `${Math.round(systemStats.ai_statistics.average_risk_score * 100)}%` : 'N/A'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Status</span>
+                    <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
+                      <span className="text-slate-700">Status</span>
                       <span className={`font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
                         {isConnected ? 'Connected' : 'Disconnected'}
                       </span>
@@ -714,58 +803,6 @@ const BirdTranslator = () => {
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="audio">
-          <Card>
-            <CardHeader>
-              <CardTitle>Detected Bird Call Audio Segments</CardTitle>
-              <CardDescription>Playback and download detected bird call audio from the AI system (served by Flask backend)</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {audioLoading ? (
-                <div>Loading audio segments...</div>
-              ) : audioError ? (
-                <div className="text-red-500">{audioError}</div>
-              ) : audioSegments.length === 0 ? (
-                <div>No audio segments available.</div>
-              ) : (
-                <ul className="space-y-4">
-                  {audioSegments.map(segment => (
-                    <li key={segment.segment_id} className="border p-3 rounded">
-                      <div>
-                        <strong>File:</strong> {segment.filename} <br />
-                        <strong>Timestamp:</strong> {new Date(segment.timestamp).toLocaleString()} <br />
-                        <strong>Duration:</strong> {segment.duration}s
-                      </div>
-                      <audio
-                        controls
-                        src={`${AUDIO_API_BASE}/audio-segment/${segment.segment_id}/play`}
-                        className="mt-2"
-                      />
-                      <div className="mt-2">
-                        <a
-                          href={`${AUDIO_API_BASE}/audio-segment/${segment.segment_id}/download`}
-                          className="text-blue-600 underline mr-4"
-                          download
-                        >
-                          Download
-                        </a>
-                        <a
-                          href={`${AUDIO_API_BASE}/audio-segment/${segment.segment_id}/base64`}
-                          className="text-blue-600 underline"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          View Base64
-                        </a>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -1114,7 +1114,25 @@ async def play_audio_segment(segment_id: str):
         return JSONResponse({"success": False, "error": "Audio file not found"}, status_code=404)
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)   
-    
+
+@app.get("/api/audio-segment/{segment_id}/download")
+async def download_audio_segment(segment_id: str):
+    """Download audio file."""
+    try:
+        # Find the file by segment_id
+        for fname in os.listdir(AUDIO_SEGMENTS_DIR):
+            if fname.endswith(".wav") and segment_id in fname:
+                file_path = os.path.join(AUDIO_SEGMENTS_DIR, fname)
+                return FileResponse(
+                    file_path,
+                    media_type="audio/wav",
+                    filename=fname,
+                    headers={"Content-Disposition": f"attachment; filename={fname}"}
+                )
+        return JSONResponse({"success": False, "error": "Audio file not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
 """Risk assessment Part"""
 # Initialize weather service
 weather_service = WeatherService()
