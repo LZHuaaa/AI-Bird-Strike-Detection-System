@@ -1589,7 +1589,50 @@ def _format_time_ago(timestamp: datetime) -> str:
         minutes = diff.seconds // 60
         return f"{minutes} minutes ago"
 
+@app.get("/api/strategic/predator-sound-effectiveness-summary")
+async def predator_sound_effectiveness_summary(species: str = None):
+    """
+    Returns adaptive effectiveness stats for each sound, per species.
+    """
+    # 1. Query all PredatorSoundEvent records (optionally filter by species)
+    events = db_manager.session.query(PredatorSoundEvent)
+    if species:
+        # Join with BirdAlert/BirdDetection to filter by species if you have that info
+        # For now, assume all events are for the requested species
+        pass
 
+    # 2. Aggregate stats
+    from collections import defaultdict
+    sound_stats = defaultdict(list)
+    behavior_stats = defaultdict(list)
+    total_events = 0
+
+    for event in events:
+        if event.sound_type and event.effectiveness is not None:
+            sound_stats[event.sound_type].append(event.effectiveness)
+            # If you log behavior context, add:
+            # behavior_stats[event.behavior_context].append(event.effectiveness)
+            total_events += 1
+
+    # 3. Calculate averages
+    effectiveness_by_sound = {sound: round(sum(vals)/len(vals), 1) for sound, vals in sound_stats.items()}
+    effectiveness_by_behavior = {behavior: round(sum(vals)/len(vals), 1) for behavior, vals in behavior_stats.items()}
+
+    # 4. Recommend top 3 sounds
+    recommended_sounds = sorted(effectiveness_by_sound, key=effectiveness_by_sound.get, reverse=True)[:3]
+    average_effectiveness = round(sum([v for vals in sound_stats.values() for v in vals]) / max(1, total_events), 1)
+
+    # 5. Return data
+    return {
+        "species": species or "all",
+        "recommended_sounds": recommended_sounds,
+        "effectiveness_by_sound": effectiveness_by_sound,
+        "effectiveness_by_behavior": effectiveness_by_behavior,
+        "total_events": total_events,
+        "average_effectiveness": average_effectiveness
+    }
+    
+    
 if __name__ == "__main__":
     uvicorn.run(
         app,

@@ -5,25 +5,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  Activity,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Minimize2,
-  Pause,
-  Play,
-  PlayCircle,
-  Radio,
-  Settings,
-  Shield,
-  Speaker,
-  StopCircle,
-  Target,
-  TrendingUp,
-  Volume2,
-  Wifi,
-  WifiOff,
-  Zap
+    Activity,
+    AlertTriangle,
+    CheckCircle,
+    Clock,
+    Minimize2,
+    Pause,
+    Play,
+    PlayCircle,
+    Radio,
+    Settings,
+    Shield,
+    Speaker,
+    StopCircle,
+    Target,
+    TrendingUp,
+    Volume2,
+    Wifi,
+    WifiOff,
+    Zap
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -824,7 +824,10 @@ const IntegratedBirdMonitor = () => {
         predatorSystem.playbackStatus !== 'playing' &&
         lastHandledAlert !== alertKey
       ) {
-        activatePredatorSound('eagle_cry');
+        (async () => {
+          const bestSound = await getBestRecommendedSound(latest.species, latest.context || '');
+          activatePredatorSound(bestSound);
+        })();
         setCriticalActionModal({
           bird: latest,
           action: 'Immediate emergency stop of all runway operations'
@@ -842,7 +845,10 @@ const IntegratedBirdMonitor = () => {
       ) {
         let seconds = 5; //5 seconds
         const timer = setTimeout(() => {
-          activatePredatorSound('eagle_cry'); // or use recommended
+          (async () => {
+            const bestSound = await getBestRecommendedSound(latest.species, latest.context || '');
+            activatePredatorSound(bestSound);
+          })(); // or use recommended
           setPendingAutoSound(null);
           setLastHandledAlert(alertKey); // Mark this alert as handled
           if (countdownRef.current) clearInterval(countdownRef.current);
@@ -869,6 +875,20 @@ const IntegratedBirdMonitor = () => {
     }
     // eslint-disable-next-line
   }, [detectedBirds]);
+
+  // Helper to get the best recommended sound for a species/context
+  const getBestRecommendedSound = async (species: string, behavior: string): Promise<string> => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/strategic/recommended-sounds?species=${encodeURIComponent(species)}&behavior=${encodeURIComponent(behavior)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.sounds) && data.sounds.length > 0) {
+        return data.sounds[0];
+      }
+    } catch (err) {
+      // ignore
+    }
+    return 'eagle_cry'; // fallback
+  };
 
   return (
     <div className="space-y-6">
@@ -1011,7 +1031,10 @@ const IntegratedBirdMonitor = () => {
                           <Button
                             size="sm"
                             variant={action.status === 'executed' ? 'secondary' : 'default'}
-                            onClick={() => activatePredatorSound('eagle_cry')}
+                            onClick={async () => {
+                              const bestSound = await getBestRecommendedSound(strategicPanel.selectedBird?.species, strategicPanel.selectedBird?.context || '');
+                              activatePredatorSound(bestSound);
+                            }}
                             disabled={predatorSystem.playbackStatus === 'playing' || action.status === 'executed'}
                           >
                             {action.status === 'executed' ? (
@@ -1523,7 +1546,10 @@ const IntegratedBirdMonitor = () => {
                 onClick={() => {
                   if (pendingAutoSound.timer) clearTimeout(pendingAutoSound.timer);
                   if (countdownRef.current) clearInterval(countdownRef.current);
-                  activatePredatorSound('eagle_cry');
+                  (async () => {
+                    const bestSound = await getBestRecommendedSound(pendingAutoSound.bird.species, pendingAutoSound.bird.context || '');
+                    activatePredatorSound(bestSound);
+                  })();
                   setPendingAutoSound(null);
                   if (pendingAutoSound?.bird) {
                     const alertKey = `${pendingAutoSound.bird.timestamp}_${pendingAutoSound.bird.species}`;

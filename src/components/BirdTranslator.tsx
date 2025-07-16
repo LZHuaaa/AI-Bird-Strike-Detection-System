@@ -103,7 +103,7 @@ const BirdTranslator = () => {
     connectWebSocket();
     fetchInitialData();
     fetchAudioSegments();
-    
+
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
@@ -114,13 +114,13 @@ const BirdTranslator = () => {
   const connectWebSocket = () => {
     try {
       wsRef.current = new WebSocket(WS_URL);
-      
+
       wsRef.current.onopen = () => {
         setIsConnected(true);
         setConnectionError(null);
         console.log('WebSocket connected');
       };
-      
+
       wsRef.current.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -129,14 +129,14 @@ const BirdTranslator = () => {
           console.error('Error parsing WebSocket message:', error);
         }
       };
-      
+
       wsRef.current.onclose = () => {
         setIsConnected(false);
         console.log('WebSocket disconnected');
         // Attempt to reconnect after 3 seconds
         setTimeout(connectWebSocket, 3000);
       };
-      
+
       wsRef.current.onerror = (error) => {
         setConnectionError('WebSocket connection failed');
         console.error('WebSocket error:', error);
@@ -172,7 +172,7 @@ const BirdTranslator = () => {
       };
 
       setCurrentTranslation(newTranslation);
-      
+
       // Add to recent translations
       setRecentTranslations(prev => [
         {
@@ -247,7 +247,7 @@ const BirdTranslator = () => {
     }));
 
     setRecentTranslations(processedTranslations);
-    
+
     if (processedTranslations.length > 0) {
       const latest = processedTranslations[0];
       setCurrentTranslation({
@@ -272,7 +272,7 @@ const BirdTranslator = () => {
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (response.ok) {
         console.log('Test alert triggered successfully');
       }
@@ -286,12 +286,12 @@ const BirdTranslator = () => {
       const response = await fetch(`${API_BASE}/acknowledge-alert/${alertId}`, {
         method: 'POST',
       });
-      
+
       if (response.ok) {
         // Update the alert in the recent translations
-        setRecentTranslations(prev => 
-          prev.map(alert => 
-            alert.id === alertId 
+        setRecentTranslations(prev =>
+          prev.map(alert =>
+            alert.id === alertId
               ? { ...alert, acknowledged: true }
               : alert
           )
@@ -311,7 +311,7 @@ const BirdTranslator = () => {
       case 'confident': return 'bg-blue-500';
       case 'focused': return 'bg-purple-500';
       case 'excited': return 'bg-green-500';
-      case 'agitated': 
+      case 'agitated':
       case 'alarmed': return 'bg-red-500';
       case 'calm': return 'bg-teal-500';
       default: return 'bg-gray-500';
@@ -370,34 +370,25 @@ const BirdTranslator = () => {
     }
   };
 
-  // Fetch effectiveness data for each species in recent translations
   const fetchSoundEffectiveness = async () => {
     setIsLoadingEffectiveness(true);
     try {
-      // Fetch environment-wide stats
-      const envRes = await fetch(`${AUDIO_API_BASE}/strategic/effectiveness-by-environment?location_type=airport`);
-      const envData = await envRes.json();
       // Get unique species from recentTranslations
       const uniqueSpecies = Array.from(new Set(recentTranslations.map(t => t.species)));
-      // For each species, fetch recommended sounds and effectiveness
+
+      // Fetch effectiveness data for each species
       const speciesEffectiveness: SpeciesEffectiveness[] = await Promise.all(
         uniqueSpecies.map(async (speciesName) => {
-          // Find a recent translation for context
-          const translation = recentTranslations.find(t => t.species === speciesName);
-          const behavior = translation?.context || '';
-          // Fetch recommended sounds
-          const soundsRes = await fetch(`${AUDIO_API_BASE}/strategic/recommended-sounds?species=${encodeURIComponent(speciesName)}&behavior=${encodeURIComponent(behavior)}`);
-          const soundsData = await soundsRes.json();
-          // Fetch effectiveness by sound (simulate or extend backend as needed)
-          // For now, use envData for all
+          const res = await fetch(`${AUDIO_API_BASE}/strategic/predator-sound-effectiveness-summary?species=${encodeURIComponent(speciesName)}`);
+          const data = await res.json();
           return {
             common_name: speciesName,
-            scientific_name: speciesName, // If available, use translation.scientific_name
-            recommended_sounds: soundsData.sounds || [],
-            effectiveness_by_sound: {}, // Extend if backend supports
-            effectiveness_by_behavior: {}, // Extend if backend supports
-            total_events: envData.event_count || 0,
-            average_effectiveness: envData.average_effectiveness || 0
+            scientific_name: data.species || speciesName,
+            recommended_sounds: data.recommended_sounds || [],
+            effectiveness_by_sound: data.effectiveness_by_sound || {},
+            effectiveness_by_behavior: data.effectiveness_by_behavior || {},
+            total_events: data.total_events || 0,
+            average_effectiveness: data.average_effectiveness || 0
           };
         })
       );
@@ -408,11 +399,28 @@ const BirdTranslator = () => {
       setIsLoadingEffectiveness(false);
     }
   };
-
   useEffect(() => {
     fetchSoundEffectiveness();
     // eslint-disable-next-line
   }, [recentTranslations]);
+
+  const [isStoppingSound, setIsStoppingSound] = useState(false);
+  const [stopSoundError, setStopSoundError] = useState<string | null>(null);
+  const stopPredatorSound = async () => {
+    setIsStoppingSound(true);
+    setStopSoundError(null);
+    try {
+      const res = await fetch(`${AUDIO_API_BASE}/strategic/stop-predator-sound`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) {
+        setStopSoundError(data.message || 'Failed to stop predator sound');
+      }
+    } catch (err: any) {
+      setStopSoundError(err.message || 'Failed to stop predator sound');
+    } finally {
+      setIsStoppingSound(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -431,7 +439,7 @@ const BirdTranslator = () => {
                   {isConnected ? 'Connected to Backend' : 'Disconnected'}
                 </p>
                 <p className="text-sm text-slate-500">
-                  {isConnected 
+                  {isConnected
                     ? 'Real-time bird communication analysis active'
                     : 'Attempting to reconnect...'
                   }
@@ -439,7 +447,7 @@ const BirdTranslator = () => {
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Button 
+              <Button
                 onClick={toggleMonitoring}
                 variant={isMonitoring ? "default" : "outline"}
                 size="sm"
@@ -452,7 +460,7 @@ const BirdTranslator = () => {
               </Button>
             </div>
           </div>
-          
+
           {connectionError && (
             <Alert className="mt-4">
               <AlertTriangle className="h-4 w-4" />
@@ -528,8 +536,8 @@ const BirdTranslator = () => {
                     "{currentTranslation.translation}"
                   </blockquote>
                   <div className="mt-4 p-3 bg-purple-50 rounded text-sm">
-                    <strong>Context Analysis:</strong> This vocalization indicates {currentTranslation.context.replace('_', ' ')}, 
-                    showing {currentTranslation.emotion} emotional state with behavioral patterns 
+                    <strong>Context Analysis:</strong> This vocalization indicates {currentTranslation.context.replace('_', ' ')},
+                    showing {currentTranslation.emotion} emotional state with behavioral patterns
                     consistent with species-typical communication.
                   </div>
                 </div>
@@ -581,7 +589,7 @@ const BirdTranslator = () => {
                             <Badge variant="outline" className="bg-white">{translation.confidence}%</Badge>
                             <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded-full">{translation.timestamp}</span>
                           </div>
-                          
+
                           <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
                             {/* Combined Original Call and Translation */}
                             <div className="space-y-2">
@@ -601,17 +609,17 @@ const BirdTranslator = () => {
                                 ) : (
                                   <span className="font-mono text-sm text-slate-600">"{translation.call}"</span>
                                 )}
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   variant="outline"
                                   className="bg-white hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-colors"
                                   onClick={() => {
-                                    const downloadUrl = translation.audio_url 
+                                    const downloadUrl = translation.audio_url
                                       ? translation.audio_url.replace('/play', '/download')
                                       : translation.audio_segment && translation.audio_segment.segment_id
                                         ? `${AUDIO_API_BASE}/audio-segment/${translation.audio_segment.segment_id}/download`
                                         : null;
-                                    
+
                                     if (downloadUrl) {
                                       window.open(downloadUrl, '_blank');
                                     }
@@ -620,24 +628,24 @@ const BirdTranslator = () => {
                                   Download
                                 </Button>
                               </div>
-                          </div>
+                            </div>
 
                             {/* AI Translation and Context */}
                             <div className="space-y-2 border-t pt-4">
                               <div className="flex items-center gap-2">
                                 <Brain className="w-4 h-4 text-purple-500" />
                                 <span className="text-sm font-medium text-slate-700">AI Translation</span>
-                          </div>
+                              </div>
                               <blockquote className="text-slate-600 italic border-l-4 border-purple-200 pl-3">
                                 "{translation.translation}"
                               </blockquote>
-                              
+
                               <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
                                 <div className="flex items-center gap-2">
-                            {getContextIcon(translation.context)}
+                                  {getContextIcon(translation.context)}
                                   <span className="font-medium">{translation.context.replace('_', ' ')}</span>
                                 </div>
-                            {translation.riskScore && (
+                                {translation.riskScore && (
                                   <div className="flex items-center gap-1">
                                     <span>•</span>
                                     <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -673,65 +681,65 @@ const BirdTranslator = () => {
                 {Object.entries(communicationPatterns).length > 0 ? (
                   Object.entries(communicationPatterns).map(([species, patterns]) => {
                     // Get common name directly from patterns data
-                    const commonName = patterns.common_name || species.split(' ').map(word => 
+                    const commonName = patterns.common_name || species.split(' ').map(word =>
                       word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
                     ).join(' ');
                     return (
-                    <div key={species} className="p-6 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 transition-colors">
-                      <h3 className="font-semibold text-lg text-blue-800 mb-4">
-                        {commonName} <span className="text-sm text-slate-600 italic">({patterns.scientific_name || species})</span>
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-white p-4 rounded-lg shadow-sm">
-                          <h4 className="font-medium text-purple-700 mb-3 flex items-center">
-                            <Brain className="w-4 h-4 mr-2" />
-                            Behavioral Intents
-                          </h4>
-                          <div className="space-y-2">
-                            {Object.entries(patterns.intents || {}).map(([intent, count]) => (
-                              <div key={intent} className="flex justify-between items-center text-sm">
-                                <span className="text-slate-700">{intent.replace('_', ' ')}</span>
-                                <div className="flex items-center">
-                                  <div className="w-16 h-2 bg-blue-100 rounded-full mr-2">
-                                    <div 
-                                      className="h-2 bg-blue-500 rounded-full" 
-                                      style={{ 
-                                        width: `${(count / Object.values(patterns.intents || {}).reduce((a, b) => a + b, 0)) * 100}%` 
-                                      }}
-                                    />
+                      <div key={species} className="p-6 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 transition-colors">
+                        <h3 className="font-semibold text-lg text-blue-800 mb-4">
+                          {commonName} <span className="text-sm text-slate-600 italic">({patterns.scientific_name || species})</span>
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="bg-white p-4 rounded-lg shadow-sm">
+                            <h4 className="font-medium text-purple-700 mb-3 flex items-center">
+                              <Brain className="w-4 h-4 mr-2" />
+                              Behavioral Intents
+                            </h4>
+                            <div className="space-y-2">
+                              {Object.entries(patterns.intents || {}).map(([intent, count]) => (
+                                <div key={intent} className="flex justify-between items-center text-sm">
+                                  <span className="text-slate-700">{intent.replace('_', ' ')}</span>
+                                  <div className="flex items-center">
+                                    <div className="w-16 h-2 bg-blue-100 rounded-full mr-2">
+                                      <div
+                                        className="h-2 bg-blue-500 rounded-full"
+                                        style={{
+                                          width: `${(count / Object.values(patterns.intents || {}).reduce((a, b) => a + b, 0)) * 100}%`
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="font-medium text-blue-600">{count}</span>
                                   </div>
-                                  <span className="font-medium text-blue-600">{count}</span>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                        <div className="bg-white p-4 rounded-lg shadow-sm">
-                          <h4 className="font-medium text-purple-700 mb-3 flex items-center">
-                            <MessageSquare className="w-4 h-4 mr-2" />
-                            Communication Types
-                          </h4>
-                          <div className="space-y-2">
-                            {Object.entries(patterns.communication_types || {}).map(([type, count]) => (
-                              <div key={type} className="flex justify-between items-center text-sm">
-                                <span className="text-slate-700">{type.replace('_', ' ')}</span>
-                                <div className="flex items-center">
-                                  <div className="w-16 h-2 bg-purple-100 rounded-full mr-2">
-                                    <div 
-                                      className="h-2 bg-purple-500 rounded-full" 
-                                      style={{ 
-                                        width: `${(count / Object.values(patterns.communication_types || {}).reduce((a, b) => a + b, 0)) * 100}%` 
-                                      }}
-                                    />
+                          <div className="bg-white p-4 rounded-lg shadow-sm">
+                            <h4 className="font-medium text-purple-700 mb-3 flex items-center">
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Communication Types
+                            </h4>
+                            <div className="space-y-2">
+                              {Object.entries(patterns.communication_types || {}).map(([type, count]) => (
+                                <div key={type} className="flex justify-between items-center text-sm">
+                                  <span className="text-slate-700">{type.replace('_', ' ')}</span>
+                                  <div className="flex items-center">
+                                    <div className="w-16 h-2 bg-purple-100 rounded-full mr-2">
+                                      <div
+                                        className="h-2 bg-purple-500 rounded-full"
+                                        style={{
+                                          width: `${(count / Object.values(patterns.communication_types || {}).reduce((a, b) => a + b, 0)) * 100}%`
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="font-medium text-purple-600">{count}</span>
                                   </div>
-                                  <span className="font-medium text-purple-600">{count}</span>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
                     );
                   })
                 ) : (
@@ -776,7 +784,7 @@ const BirdTranslator = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl">
                   <h4 className="font-medium text-purple-800 mb-4 flex items-center">
                     <Brain className="w-5 h-5 mr-2" />
@@ -786,21 +794,21 @@ const BirdTranslator = () => {
                     <div className="flex justify-between items-center bg-white p-3 rounded-lg">
                       <span className="text-slate-700">Classification Accuracy</span>
                       <span className="font-medium text-purple-600 text-lg">
-                        {aiInsights.ai_model_performance?.classification_accuracy ? 
+                        {aiInsights.ai_model_performance?.classification_accuracy ?
                           `${Math.round(aiInsights.ai_model_performance.classification_accuracy * 100)}%` : 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center bg-white p-3 rounded-lg">
                       <span className="text-slate-700">Prediction Confidence</span>
                       <span className="font-medium text-purple-600 text-lg">
-                        {aiInsights.ai_model_performance?.behavioral_prediction_confidence ? 
+                        {aiInsights.ai_model_performance?.behavioral_prediction_confidence ?
                           `${Math.round(aiInsights.ai_model_performance.behavioral_prediction_confidence * 100)}%` : 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center bg-white p-3 rounded-lg">
                       <span className="text-slate-700">Analysis Success Rate</span>
                       <span className="font-medium text-purple-600 text-lg">
-                        {aiInsights.ai_model_performance?.communication_analysis_success_rate ? 
+                        {aiInsights.ai_model_performance?.communication_analysis_success_rate ?
                           `${Math.round(aiInsights.ai_model_performance.communication_analysis_success_rate * 100)}%` : 'N/A'}
                       </span>
                     </div>
@@ -842,7 +850,7 @@ const BirdTranslator = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-br from-purple-50 to-indigo-50 p-6 rounded-xl">
                   <h4 className="font-medium text-purple-800 mb-4 flex items-center">
                     <Brain className="w-5 h-5 mr-2" />
@@ -863,7 +871,7 @@ const BirdTranslator = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl">
                   <h4 className="font-medium text-green-800 mb-4 flex items-center">
                     <Signal className="w-5 h-5 mr-2" />
@@ -877,7 +885,7 @@ const BirdTranslator = () => {
                     <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
                       <span className="text-slate-700">Avg Risk Score</span>
                       <span className="font-medium text-green-600">
-                        {systemStats.ai_statistics?.average_risk_score ? 
+                        {systemStats.ai_statistics?.average_risk_score ?
                           `${Math.round(systemStats.ai_statistics.average_risk_score * 100)}%` : 'N/A'}
                       </span>
                     </div>
@@ -909,21 +917,28 @@ const BirdTranslator = () => {
               <div className="space-y-6">
                 {isLoadingEffectiveness ? (
                   <div className="text-center py-8">
+                    <Activity className="w-8 h-8 animate-spin mx-auto mb-2 text-purple-500" />
                     <p>Loading effectiveness data...</p>
                   </div>
                 ) : soundEffectiveness.length > 0 ? (
                   soundEffectiveness.map((species) => (
                     <div key={species.common_name} className="p-6 border rounded-lg bg-white">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-lg text-blue-800">
-                          {species.common_name}
-                        </h3>
+                        <div>
+                          <h3 className="font-semibold text-lg text-blue-800">
+                            {species.common_name}
+                          </h3>
+                          <p className="text-sm text-slate-600 italic">
+                            {species.scientific_name}
+                          </p>
+                        </div>
                         <Badge className={species.average_effectiveness > 70 ? 'bg-green-500 text-white' : 'bg-yellow-400 text-black'}>
                           {Math.round(species.average_effectiveness)}% Effective
                         </Badge>
                       </div>
+
                       {/* Recommended Sounds */}
-                      <div className="mb-4">
+                      <div className="mb-6">
                         <h4 className="text-sm font-medium text-slate-600 mb-2">
                           Recommended Sounds
                         </h4>
@@ -935,36 +950,63 @@ const BirdTranslator = () => {
                           ))}
                         </div>
                       </div>
+
+                      {/* Sound Effectiveness */}
+                      <div className="mb-6">
+                        <h4 className="text-sm font-medium text-slate-600 mb-3">
+                          Sound Effectiveness
+                        </h4>
+                        <div className="space-y-2">
+                          {Object.entries(species.effectiveness_by_sound).map(([sound, effectiveness]) => (
+                            <div key={sound} className="flex items-center justify-between">
+                              <span className="text-sm">{sound.replace('_', ' ')}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-32 h-2 bg-purple-100 rounded-full">
+                                  <div
+                                    className="h-2 bg-purple-500 rounded-full"
+                                    style={{ width: `${effectiveness}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm font-medium w-12 text-right">
+                                  {Math.round(effectiveness)}%
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* Effectiveness by Behavior */}
                       <div className="mb-4">
-                        <h4 className="text-sm font-medium text-slate-600 mb-2">
+                        <h4 className="text-sm font-medium text-slate-600 mb-3">
                           Effectiveness by Behavior
                         </h4>
                         <div className="space-y-2">
-                          {Object.entries(species.effectiveness_by_behavior).length === 0 ? (
-                            <span className="text-slate-400">No breakdown available</span>
-                          ) : (
-                            Object.entries(species.effectiveness_by_behavior).map(([behavior, effectiveness]) => (
-                              <div key={behavior} className="flex items-center justify-between">
-                                <span className="text-sm">{behavior.replace('_', ' ')}</span>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-24 h-2 bg-gray-100 rounded-full">
-                                    <div
-                                      className="h-2 bg-purple-500 rounded-full"
-                                      style={{ width: `${effectiveness}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-sm font-medium">{Math.round(effectiveness)}%</span>
+                          {Object.entries(species.effectiveness_by_behavior).map(([behavior, effectiveness]) => (
+                            <div key={behavior} className="flex items-center justify-between">
+                              <span className="text-sm">{behavior.replace('_', ' ')}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-32 h-2 bg-green-100 rounded-full">
+                                  <div
+                                    className="h-2 bg-green-500 rounded-full"
+                                    style={{ width: `${effectiveness}%` }}
+                                  />
                                 </div>
+                                <span className="text-sm font-medium w-12 text-right">
+                                  {Math.round(effectiveness)}%
+                                </span>
                               </div>
-                            ))
-                          )}
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      {/* Usage Stats */}
-                      <div className="mt-4 pt-4 border-t">
-                        <div className="flex items-center justify-between text-sm text-slate-600">
-                          <span>Total Events: {species.total_events}</span>
+
+                      {/* Usage Stats and Play Button */}
+                      <div className="mt-4 pt-4 border-t flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                        <span className="text-sm text-slate-600">
+                          Total Events: {species.total_events}
+                        </span>
+                        <div className="flex gap-2">
                           <Button
                             size="sm"
                             variant="outline"
@@ -974,12 +1016,30 @@ const BirdTranslator = () => {
                                 playRecommendedSound(species.common_name, '', species.recommended_sounds[0]);
                               }
                             }}
+                            disabled={species.recommended_sounds.length === 0}
                           >
                             <Volume2 className="w-4 h-4 mr-2" />
                             Play Recommended Sound
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="hover:bg-red-50 hover:text-red-600"
+                            onClick={stopPredatorSound}
+                            disabled={isStoppingSound}
+                            title="Stop Predator Sound"
+                          >
+                            {isStoppingSound ? (
+                              <span className="flex items-center"><span className="animate-spin mr-2 w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full"></span>Stopping...</span>
+                            ) : (
+                              <span className="flex items-center"><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>Stop</span>
+                            )}
+                          </Button>
                         </div>
                       </div>
+                      {stopSoundError && (
+                        <div className="text-red-500 text-xs mt-2">{stopSoundError}</div>
+                      )}
                     </div>
                   ))
                 ) : (
