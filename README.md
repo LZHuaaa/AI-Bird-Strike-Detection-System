@@ -1,26 +1,9 @@
-# Welcome to your Lovable project
+# Avian Intel Bridge - Bird Strike Detection System
 
 ## Project info
+This project is a real-time bird strike detection system designed to detect and classify bird sounds, assess risks, and trigger appropriate actions to avoid bird strikes in aviation.
 
-**URL**: https://lovable.dev/projects/3b97d8b5-c77a-4154-a4a0-53b1d9572e71
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/3b97d8b5-c77a-4154-a4a0-53b1d9572e71) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+**Follow these steps for installtion**
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.
@@ -32,23 +15,16 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Setup backend.
+pip install -r requirements.txt
+cd backend
+python db.py
+python seed_data.py
+python app.py
+
+#Step 5: Start frontend.
 npm run dev
 ```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
 
 ## What technologies are used for this project?
 
@@ -59,15 +35,3 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/3b97d8b5-c77a-4154-a4a0-53b1d9572e71) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
