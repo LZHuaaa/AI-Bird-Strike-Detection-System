@@ -29,14 +29,14 @@ python-multipart==0.0.6
 # Database
 SQLAlchemy==2.0.41
 
-# Machine Learning - Compatible versions
+# Machine Learning - Compatible versions (let TensorFlow manage its own dependencies)
 tensorflow==2.15.0
 tensorflow-estimator==2.15.0
 tensorflow-io-gcs-filesystem==0.31.0
 keras==2.15.0
 scikit-learn==1.3.2
 pandas==2.2.3
-ml-dtypes==0.3.2
+ml-dtypes~=0.2.0
 
 # Audio processing
 librosa==0.10.1
@@ -45,8 +45,8 @@ audioread==3.0.1
 resampy==0.4.2
 soxr==0.5.0.post1
 
-# Note: PyAudio often fails on cloud platforms - consider removing if not essential
-# PyAudio==0.2.14
+# PyAudio - may require system dependencies
+PyAudio==0.2.14
 
 # Image processing
 opencv-python-headless==4.8.1.78
@@ -145,7 +145,7 @@ Markdown==3.8.2
 mpmath==1.3.0
 msgpack==1.1.1
 networkx==3.5
-oauthlib==3.3.3
+oauthlib==3.2.2
 opt_einsum==3.4.0
 pooch==1.8.2
 proto-plus==1.26.1
