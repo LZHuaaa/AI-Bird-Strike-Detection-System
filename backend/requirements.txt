@@ -45,8 +45,8 @@ audioread==3.0.1
 resampy==0.4.2
 soxr==0.5.0.post1
 
-# Note: PyAudio often fails on cloud platforms - consider removing if not essential
-# PyAudio==0.2.14
+# PyAudio - may require system dependencies
+PyAudio==0.2.14
 
 # Image processing
 opencv-python-headless==4.8.1.78
