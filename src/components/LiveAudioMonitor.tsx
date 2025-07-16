@@ -5,25 +5,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import {
-    Activity,
-    AlertTriangle,
-    CheckCircle,
-    Clock,
-    Minimize2,
-    Pause,
-    Play,
-    PlayCircle,
-    Radio,
-    Settings,
-    Shield,
-    Speaker,
-    StopCircle,
-    Target,
-    TrendingUp,
-    Volume2,
-    Wifi,
-    WifiOff,
-    Zap
+  Activity,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Minimize2,
+  Pause,
+  Play,
+  PlayCircle,
+  Radio,
+  Shield,
+  Speaker,
+  StopCircle,
+  Target,
+  TrendingUp,
+  Volume2,
+  Wifi,
+  WifiOff,
+  Zap
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -210,7 +209,7 @@ const IntegratedBirdMonitor = () => {
           const newBird = {
             species: species.common,
             scientific: species.scientific,
-            confidence: Math.round((data.confidence || data.risk_score || 0) * 100),
+            confidence: Math.round((data.confidence ?? 0) * 100),
             location: {
               x: Math.floor(Math.random() * 200) + 50,
               y: Math.floor(Math.random() * 120) + 50
@@ -230,26 +229,29 @@ const IntegratedBirdMonitor = () => {
             }
           };
 
-          setDetectedBirds(prev => {
-            // Avoid duplicates: only add if not already present by timestamp+species
-            const exists = prev.some(b =>
-              b.species === newBird.species &&
-              b.timestamp === newBird.timestamp
-            );
-            if (exists) return prev;
-            // Insert new bird at the front, keep max 10
-            return [newBird, ...prev].slice(0, 10);
-          });
+          // Only add birds with confidence >= 30%
+          if (newBird.confidence >= 30) {
+            setDetectedBirds(prev => {
+              // Avoid duplicates: only add if not already present by timestamp+species
+              const exists = prev.some(b =>
+                b.species === newBird.species &&
+                b.timestamp === newBird.timestamp
+              );
+              if (exists) return prev;
+              // Insert new bird at the front, keep max 10
+              return [newBird, ...prev].slice(0, 10);
+            });
 
-          // Add to active alerts if high risk
-          if (data.alert_level === 'HIGH' || data.alert_level === 'CRITICAL') {
-            setActiveAlerts(prev => [...prev.slice(-2), {
-              id: Date.now(),
-              species: species,
-              timestamp: new Date(data.timestamp || Date.now()).toLocaleTimeString(),
-              alert_level: data.alert_level,
-              recommended_action: data.recommended_action || 'CONTINUE_NORMAL'
-            }]);
+            // Add to active alerts if high risk
+            if (data.alert_level === 'HIGH' || data.alert_level === 'CRITICAL') {
+              setActiveAlerts(prev => [...prev.slice(-2), {
+                id: Date.now(),
+                species: species,
+                timestamp: new Date(data.timestamp || Date.now()).toLocaleTimeString(),
+                alert_level: data.alert_level,
+                recommended_action: data.recommended_action || 'CONTINUE_NORMAL'
+              }]);
+            }
           }
 
         } catch (error) {
@@ -679,7 +681,7 @@ const IntegratedBirdMonitor = () => {
   // Predator Sound Functions
   const [effectivenessCountdown, setEffectivenessCountdown] = useState<number | null>(null);
 
-  const activatePredatorSound = useCallback(async (soundType = 'cat_meow') => {
+  const activatePredatorSound = useCallback(async (soundType = 'cat_meow', speciesObj = null) => {
     console.log('🔊 Attempting to activate predator sound:', soundType);
 
     setPredatorSystem(prev => ({
@@ -693,21 +695,35 @@ const IntegratedBirdMonitor = () => {
     setEffectivenessCountdown(20);  //20 seconds
 
     try {
+      const body: any = {
+        sound_type: soundType
+      };
+      if (speciesObj) {
+        body.target_species = speciesObj.species || speciesObj.common || speciesObj;
+        body.target_species_scientific = speciesObj.scientific || speciesObj.scientific_name;
+      }
       const response = await fetch('http://localhost:8000/api/strategic/activate-predator-sound', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ sound_type: soundType })
+        body: JSON.stringify(body)
       });
 
       const data = await response.json();
       console.log('🔊 Predator sound activation response:', data);
 
       if (response.ok && data.success && data.event_id) {
+        // Immediately call the effectiveness endpoint (partial/initial result)
+        setPredatorSystem(prev => ({ ...prev, effectivenessLoading: true }));
+        fetch(`http://localhost:8000/api/strategic/predator-sound-effectiveness?event_id=${data.event_id}&window_minutes=0.33`)
+          .then(res => res.json())
+          .then(effData => {
+            // Optionally show initial/partial result or just keep loading
+          });
         // Start countdown timer
-        let seconds = 20; //20 seconds
+        let seconds = 20; // 20 seconds
         setEffectivenessCountdown(seconds);
         const countdownInterval = setInterval(() => {
           seconds -= 1;
@@ -716,11 +732,11 @@ const IntegratedBirdMonitor = () => {
             clearInterval(countdownInterval);
           }
         }, 1000);
-        // Wait 1 minute, then fetch effectiveness from backend
+        // After 20 seconds, fetch the final effectiveness from backend
         setTimeout(async () => {
           setPredatorSystem(prev => ({ ...prev, effectivenessLoading: true }));
           try {
-            const effRes = await fetch(`http://localhost:8000/api/strategic/predator-sound-effectiveness?event_id=${data.event_id}&window_minutes=1`);
+            const effRes = await fetch(`http://localhost:8000/api/strategic/predator-sound-effectiveness?event_id=${data.event_id}&window_minutes=0.33`);
             const effData = await effRes.json();
             if (effData.success) {
               setPredatorSystem(prev => ({
@@ -907,7 +923,7 @@ const IntegratedBirdMonitor = () => {
       ) {
         (async () => {
           const bestSound = await getBestRecommendedSound(latest.species, latest.context || '');
-          activatePredatorSound(bestSound);
+          activatePredatorSound(bestSound, latest);
         })();
         setCriticalActionModal({
           bird: latest,
@@ -928,7 +944,7 @@ const IntegratedBirdMonitor = () => {
         const timer = setTimeout(() => {
           (async () => {
             const bestSound = await getBestRecommendedSound(latest.species, latest.context || '');
-            activatePredatorSound(bestSound);
+            activatePredatorSound(bestSound, latest);
           })(); // or use recommended
           setPendingAutoSound(null);
           setLastHandledAlert(alertKey); // Mark this alert as handled
@@ -1114,7 +1130,7 @@ const IntegratedBirdMonitor = () => {
                             variant={action.status === 'executed' ? 'secondary' : 'default'}
                             onClick={async () => {
                               const bestSound = await getBestRecommendedSound(strategicPanel.selectedBird?.species, strategicPanel.selectedBird?.context || '');
-                              activatePredatorSound(bestSound);
+                              activatePredatorSound(bestSound, strategicPanel.selectedBird);
                             }}
                             disabled={predatorSystem.playbackStatus === 'playing' || action.status === 'executed'}
                           >
@@ -1204,7 +1220,7 @@ const IntegratedBirdMonitor = () => {
                             key={sound}
                             size="sm"
                             variant="outline"
-                            onClick={() => activatePredatorSound(sound)}
+                            onClick={() => activatePredatorSound(sound, strategicPanel.selectedBird)}
                             disabled={predatorSystem.playbackStatus === 'playing'}
                           >
                             <PlayCircle className="w-3 h-3 mr-1" />
@@ -1582,7 +1598,7 @@ const IntegratedBirdMonitor = () => {
                       >
                         <Shield className="w-3 h-3" />
                         Strategic
-                      </Button>
+                    </Button>
                     </div>
                   </div>
                 </div>

@@ -45,12 +45,12 @@ interface BehaviorInsight {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  AlertCircle,
-  BarChart3,
-  Brain,
-  Clock,
-  MapPin,
-  RefreshCw
+    AlertCircle,
+    BarChart3,
+    Brain,
+    Clock,
+    MapPin,
+    RefreshCw
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -136,7 +136,7 @@ const BehaviorAnalytics = () => {
       Object.entries(patterns.patterns).forEach(([species, data]) => {
         const totalDetections = Object.values((data as any).intents || {}).reduce((sum: number, count) => sum + (count as number), 0);
 
-        if ((totalDetections as number) > 10) { // Only show species with significant activity
+        if ((totalDetections as number) > 3) { // Only show species with more than 3 detections
           migrationSpecies.push({
             species: species.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
             peak: getCurrentSeasonPeak(),
@@ -349,49 +349,63 @@ const BehaviorAnalytics = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="h-64 flex items-end space-x-2">
-              {dailyPatterns.map((data, index) => (
-                <div key={index} className="flex-1 flex flex-col items-center">
-                  <div
-                    className="w-full bg-gradient-to-t from-blue-500 to-purple-500 rounded-t-sm mb-2"
-                    style={{ height: `${data.activity}%` }}
-                  />
-                  <div className="text-xs text-slate-600 text-center">
-                    <div>{data.time}</div>
-                    <div className="font-medium">{data.species} sp.</div>
+            {(dailyPatterns.length === 0 || dailyPatterns.every(d => d.activity === 0)) ? (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                <Clock className="w-16 h-16 text-slate-300 mb-4" />
+                <div className="text-center text-slate-500">
+                  <p className="text-lg font-medium mb-2">No Activity Data Available</p>
+                  <p className="text-sm">
+                    The system needs to detect and analyze bird activity to display patterns.
+                    <br />
+                    Try running the system for at least 24 hours to see daily patterns.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-3 gap-4 text-center text-sm">
+                  <div>
+                    <div className="font-semibold text-blue-600">Peak Activity</div>
+                    <div>
+                      {dailyPatterns.length > 0 ?
+                        `${dailyPatterns.reduce((max, curr) => curr.activity > max.activity ? curr : max).time} (${dailyPatterns.reduce((max, curr) => curr.activity > max.activity ? curr : max).activity}%)` :
+                        'N/A'
+                      }
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-green-600">Most Species</div>
+                    <div>
+                      {dailyPatterns.length > 0 ?
+                        `${dailyPatterns.reduce((max, curr) => curr.species > max.species ? curr : max).time} (${dailyPatterns.reduce((max, curr) => curr.species > max.species ? curr : max).species} species)` :
+                        'N/A'
+                      }
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-purple-600">Quietest Time</div>
+                    <div>
+                      {dailyPatterns.length > 0 ?
+                        `${dailyPatterns.reduce((min, curr) => curr.activity < min.activity ? curr : min).time} (${dailyPatterns.reduce((min, curr) => curr.activity < min.activity ? curr : min).activity}%)` :
+                        'N/A'
+                      }
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-3 gap-4 text-center text-sm">
-              <div>
-                <div className="font-semibold text-blue-600">Peak Activity</div>
-                <div>
-                  {dailyPatterns.length > 0 ?
-                    `${dailyPatterns.reduce((max, curr) => curr.activity > max.activity ? curr : max).time} (${dailyPatterns.reduce((max, curr) => curr.activity > max.activity ? curr : max).activity}%)` :
-                    'N/A'
-                  }
+                <div className="p-4 bg-slate-50 rounded-lg">
+                  <div className="text-sm text-slate-600 mb-2">Activity Distribution</div>
+                  <div className="grid grid-cols-8 gap-2">
+                    {dailyPatterns.map((data, index) => (
+                      <div key={index} className="text-center">
+                        <div className="text-xs text-slate-500">{data.time}</div>
+                        <div className="font-medium text-blue-600">{data.activity}%</div>
+                        <div className="text-xs text-slate-400">{data.species} sp.</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div>
-                <div className="font-semibold text-green-600">Most Species</div>
-                <div>
-                  {dailyPatterns.length > 0 ?
-                    `${dailyPatterns.reduce((max, curr) => curr.species > max.species ? curr : max).time} (${dailyPatterns.reduce((max, curr) => curr.species > max.species ? curr : max).species} species)` :
-                    'N/A'
-                  }
-                </div>
-              </div>
-              <div>
-                <div className="font-semibold text-purple-600">Quietest Time</div>
-                <div>
-                  {dailyPatterns.length > 0 ?
-                    `${dailyPatterns.reduce((min, curr) => curr.activity < min.activity ? curr : min).time} (${dailyPatterns.reduce((min, curr) => curr.activity < min.activity ? curr : min).activity}%)` :
-                    'N/A'
-                  }
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -409,7 +423,12 @@ const BehaviorAnalytics = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {migrationData.map((species, index) => (
+            {migrationData.length === 0 ? (
+              <div className="text-center text-slate-500 py-8">
+                Try detecting above 3 species (e.g., House Crow, White-bellied Sea Eagle, Javan Myna) to see activity analysis.
+              </div>
+            ) : (
+              migrationData.map((species, index) => (
               <div key={index} className="p-4 border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div>
@@ -438,7 +457,8 @@ const BehaviorAnalytics = () => {
                   />
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

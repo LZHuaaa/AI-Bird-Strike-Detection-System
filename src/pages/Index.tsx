@@ -2,14 +2,14 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-    Bird,
-    Brain,
-    Globe,
-    Radar,
-    Radio,
-    Settings,
-    Shield,
-    TrendingUp
+  Bird,
+  Brain,
+  Globe,
+  Radar,
+  Radio,
+  Settings,
+  Shield,
+  TrendingUp
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import aviationHero from '../assets/aviation-hero.jpg';

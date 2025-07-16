@@ -160,7 +160,7 @@ const BirdTranslator = () => {
         translation: data.ai_insights?.call_interpretation?.[0] || 'Processing...',
         emotion: data.communication_analysis?.emotional_state || 'Unknown',
         context: data.communication_analysis?.behavioral_context || 'Unknown',
-        confidence: Math.round(((data.confidence ?? data.risk_score) || 0) * 100),
+        confidence: Math.round(((data.confidence ?? 0) * 100)),
         timestamp: new Date(data.timestamp).toLocaleTimeString(),
         alertLevel: data.alert_level,
         riskScore: data.risk_score,
@@ -237,7 +237,7 @@ const BirdTranslator = () => {
       translation: alert.ai_insights?.call_interpretation?.[0] || 'Processing...',
       emotion: alert.communication_analysis?.emotional_state || 'Unknown',
       context: alert.communication_analysis?.behavioral_context || 'Unknown',
-      confidence: Math.round(((alert.confidence ?? alert.risk_score) || 0) * 100),
+      confidence: Math.round(((alert.confidence ?? 0) * 100)),
       timestamp: new Date(alert.timestamp).toLocaleTimeString(),
       alertLevel: alert.alert_level,
       riskScore: alert.risk_score,
@@ -363,7 +363,11 @@ const BirdTranslator = () => {
       await fetch(`${AUDIO_API_BASE}/strategic/activate-predator-sound`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sound_type: sound })
+        body: JSON.stringify({
+          sound_type: sound,
+          target_species: species,
+          target_species_scientific: behavior // If you have scientific name, pass it here instead of behavior
+        })
       });
     } catch (err) {
       console.error('Failed to play sound:', err);
@@ -373,36 +377,29 @@ const BirdTranslator = () => {
   const fetchSoundEffectiveness = async () => {
     setIsLoadingEffectiveness(true);
     try {
-      // Get unique species from recentTranslations
-      const uniqueSpecies = Array.from(new Set(recentTranslations.map(t => t.species)));
-
-      // Fetch effectiveness data for each species
-      const speciesEffectiveness: SpeciesEffectiveness[] = await Promise.all(
-        uniqueSpecies.map(async (speciesName) => {
-          const res = await fetch(`${AUDIO_API_BASE}/strategic/predator-sound-effectiveness-summary?species=${encodeURIComponent(speciesName)}`);
-          const data = await res.json();
-          return {
-            common_name: speciesName,
-            scientific_name: data.species || speciesName,
-            recommended_sounds: data.recommended_sounds || [],
-            effectiveness_by_sound: data.effectiveness_by_sound || {},
-            effectiveness_by_behavior: data.effectiveness_by_behavior || {},
-            total_events: data.total_events || 0,
-            average_effectiveness: data.average_effectiveness || 0
-          };
-        })
-      );
-      setSoundEffectiveness(speciesEffectiveness);
+      const res = await fetch(`${AUDIO_API_BASE}/strategic/predator-sound-effectiveness-summary`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setSoundEffectiveness(data.map(item => ({
+          common_name: item.species || item.common_name,
+          scientific_name: item.scientific_name || item.species,
+          recommended_sounds: item.recommended_sounds || [],
+          effectiveness_by_sound: item.effectiveness_by_sound || {},
+          effectiveness_by_behavior: item.effectiveness_by_behavior || {},
+          total_events: item.total_events || 0,
+          average_effectiveness: item.average_effectiveness || 0
+        })));
+      }
     } catch (error) {
       console.error('Error fetching sound effectiveness:', error);
     } finally {
       setIsLoadingEffectiveness(false);
     }
   };
+
   useEffect(() => {
     fetchSoundEffectiveness();
-    // eslint-disable-next-line
-  }, [recentTranslations]);
+  }, []); // Only fetch once when component mounts
 
   const [isStoppingSound, setIsStoppingSound] = useState(false);
   const [stopSoundError, setStopSoundError] = useState<string | null>(null);
@@ -586,7 +583,7 @@ const BirdTranslator = () => {
                                 {translation.alertLevel}
                               </div>
                             )}
-                            <Badge variant="outline" className="bg-white">{translation.confidence}%</Badge>
+                            
                             <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded-full">{translation.timestamp}</span>
                           </div>
 
@@ -978,9 +975,7 @@ const BirdTranslator = () => {
 
                       {/* Effectiveness by Behavior */}
                       <div className="mb-4">
-                        <h4 className="text-sm font-medium text-slate-600 mb-3">
-                          Effectiveness by Behavior
-                        </h4>
+
                         <div className="space-y-2">
                           {Object.entries(species.effectiveness_by_behavior).map(([behavior, effectiveness]) => (
                             <div key={behavior} className="flex items-center justify-between">

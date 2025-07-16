@@ -84,6 +84,9 @@ class BirdDetection(Base):
     # NEW: Audio segment filename for playback
     audio_segment_filename = Column(String, nullable=True)
     
+    # NEW: Track if detection occurred during predator sound playback
+    during_predator_sound = Column(Boolean, default=False)
+    
     # Relationships
     species = relationship("BirdSpecies", back_populates="detections")
     alerts = relationship("BirdAlert", back_populates="detection")
@@ -483,6 +486,8 @@ class PredatorSoundEvent(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     effectiveness = Column(Float, nullable=True)
     location_type = Column(String, default="airport")
+    target_species = Column(String)  # Add this field
+    target_species_scientific = Column(String)  # Add this field
 
 # Enhanced Image Service
 class BirdImageService:
@@ -698,7 +703,7 @@ def seed_bird_species():
             session.add(species)
             print(f"✅ Added {species_info['common_name']} with image")
         else:
-            if not existing.image_data:
+            if existing.image_data is None:
                 print(f"🔍 Fetching image for existing species: {existing.common_name}")
                 image_data = image_service.fetch_bird_image(
                     existing.common_name,
@@ -934,7 +939,7 @@ class DatabaseManager:
             common_name=common_name
         ).first()
         
-        if species and not species.image_data:
+        if species is not None and species.image_data is None:
             self._fetch_species_image(species)
         
         return species
@@ -979,13 +984,23 @@ class DatabaseManager:
         avg_confidence = self.session.query(
             func.avg(BirdDetection.confidence)
         ).scalar() or 0.0
+
+        # Add species count
+        species_count = self.session.query(func.count(func.distinct(BirdDetection.species_id))).scalar() or 0
+        
+        # Add active (unresolved) alerts
+        active_alerts = self.session.query(BirdAlert).filter(
+            BirdAlert.resolved == False
+        ).count()
         
         return {
             'total_detections': total_detections,
             'total_alerts': total_alerts,
             'high_risk_alerts': high_risk_alerts,
             'most_common_species': most_common[0] if most_common else None,
-            'average_confidence': avg_confidence
+            'average_confidence': avg_confidence,
+            'species_count': species_count,
+            'active_alerts': active_alerts
         }
     
     # New methods for behavior analytics

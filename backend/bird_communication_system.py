@@ -30,6 +30,7 @@ except ImportError:
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from db import BirdSpecies,BirdImageService
 import pickle
 import warnings
 import uuid
@@ -46,7 +47,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class AdvancedBirdCommunicationAnalyzer:
-    def __init__(self):
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
         # Audio settings
         self.CHUNK = 1024
         self.FORMAT = pyaudio.paInt16
@@ -429,11 +432,6 @@ class AdvancedBirdCommunicationAnalyzer:
     def analyze_audio_with_ai(self, audio_data):
         """Comprehensive AI analysis of audio data"""
         try:
-            # Skip analysis if predator sound is playing
-            if self.is_predator_sound_active():
-                logger.debug("Skipping audio analysis - predator sound is playing")
-                return []
-
             # Extract features
             audio_features = self.extract_audio_features(audio_data)
             
@@ -453,7 +451,7 @@ class AdvancedBirdCommunicationAnalyzer:
                 temp_file,
                 lat=3.1390,  # Johor Bahru
                 lon=101.6869,
-                min_conf=0.1
+                min_conf=0.3  #confidence threshold
             )
             
             recording.analyze()
@@ -472,6 +470,9 @@ class AdvancedBirdCommunicationAnalyzer:
                 segment_metadata = self.save_audio_segment(audio_data, detection_summary)
                 
                 for detection in recording.detections:
+                    
+                    if detection['confidence'] < 0.3:  #confidence threshold
+                        continue  # Skip low-confidence detections
                     # Analyze communication patterns
                     species_info = {
                         'scientific': detection['scientific_name'],
@@ -540,8 +541,23 @@ class AdvancedBirdCommunicationAnalyzer:
                     if len(self.communication_history) > 100:  # Keep last 100 patterns
                         self.communication_history = self.communication_history[-100:]
                     
-                    alerts.append(alert)
+                    # Add detection to database with predator sound status
+                    detection_data = {
+                        'species_id': self.get_species_id(species_info),
+                        'timestamp': datetime.fromisoformat(alert['timestamp']),
+                        'confidence': detection['confidence'],
+                        'call_type': communication_patterns['call_type'],
+                        'emotional_state': communication_patterns['emotional_state'],
+                        'behavioral_pattern': behavioral_intent['primary_intent'],
+                        'group_behavior': communication_patterns['flock_communication'],
+                        'audio_segment_filename': segment_metadata['filename'] if segment_metadata else None,
+                        'during_predator_sound': self.is_predator_sound_active()  # NEW: Track predator sound status
+                    }
+                    self.db_manager.add_detection(detection_data)
                     
+                    # Only add to alerts list if not during predator sound playback
+                    if not self.is_predator_sound_active():
+                        alerts.append(alert)
                     # Trigger callbacks
                     for callback in self.alert_callbacks:
                         callback(alert)
@@ -701,6 +717,40 @@ class AdvancedBirdCommunicationAnalyzer:
             return elapsed < self.predator_play_duration
         
         return False
+    def get_species_id(self, species_info):
+        """Get species ID from database, creating if not exists"""
+        try:
+            # Try to find existing species
+            species = self.db_manager.get_species_by_name(species_info['common'])
+            if species:
+                return species.id
+
+            # Create new species if not found
+            image_service = BirdImageService()
+            image_data = image_service.fetch_bird_image(
+                species_info['common'],
+                species_info['scientific']
+            )
+
+            new_species = BirdSpecies(
+                scientific_name=species_info['scientific'],
+                common_name=species_info['common'],
+                risk_level='MEDIUM',  # Default risk level
+                size_category='UNKNOWN',
+                typical_behavior='',
+                migration_pattern='',
+                image_url=image_data['image_url'],
+                image_data=image_data['image_data'],
+                image_source=image_data['image_source'],
+                image_fetched_at=image_data['image_fetched_at']
+            )
+            self.db_manager.session.add(new_species)
+            self.db_manager.session.commit()
+            return new_species.id
+
+        except Exception as e:
+            logger.error(f"Error getting species ID: {e}")
+            return None
 
 
 # Flask API for serving audio segments
@@ -708,6 +758,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Global reference to the warning system
+# This would be an instance of AdvancedBirdCommunicationAnalyzer
 warning_system = None
 
 @app.route('/api/audio-segments', methods=['GET'])
@@ -823,7 +874,7 @@ def get_audio_segment_base64(segment_id):
             with open(segment['file_path'], 'rb') as audio_file:
                 audio_data = audio_file.read()
                 base64_audio = base64.b64encode(audio_data).decode('utf-8')
-                
+
             return jsonify({
                 'success': True,
                 'audio_base64': base64_audio,
@@ -852,6 +903,7 @@ def get_system_status():
 
 def start_flask_server():
     """Start Flask server in a separate thread"""
+    # Use 'werkzeug' for production or a more robust server
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
 
 
@@ -866,7 +918,7 @@ def enhanced_alert_handler(alert):
     print(f"Emotional State: {alert['communication_analysis']['emotional_state']}")
     print(f"Urgency Level: {alert['communication_analysis']['urgency_level']}")
     print(f"Action: {alert['recommended_action']}")
-    
+
     # Audio segment info
     if alert['audio_segment']:
         print(f"🎵 Audio Segment: {alert['audio_segment']['filename']}")
@@ -874,7 +926,7 @@ def enhanced_alert_handler(alert):
         print(f"   • Duration: {alert['audio_segment']['duration']}s")
         print(f"   • File Size: {alert['audio_segment']['file_size']} bytes")
         print(f"   • Playback URL: http://localhost:5000/api/audio-segment/{alert['audio_segment']['segment_id']}/play")
-    
+
     print("\n🧠 AI Insights:")
     for insight in alert['ai_insights']['call_interpretation']:
         print(f"   • {insight}")
@@ -887,19 +939,43 @@ def enhanced_alert_handler(alert):
 def main():
     """Main function to run the enhanced system with audio serving"""
     global warning_system
-    
+
     print("🚀 Enhanced Bird Strike Warning System with AI Communication Analysis")
     print("🧠 Powered by Multiple AI Models for Behavior Prediction")
     print("🎵 Audio Segment Saving and Serving Enabled")
     print("🌐 API Server for Frontend Integration")
     print("=" * 80)
-    
+
+    # This is a placeholder for the actual system class
+    class MockAdvancedBirdCommunicationAnalyzer:
+        def __init__(self):
+            self.is_running = False
+            self.stored_segments = []
+            self.AUDIO_STORAGE_DIR = "/tmp/audio_storage"
+            if not os.path.exists(self.AUDIO_STORAGE_DIR):
+                os.makedirs(self.AUDIO_STORAGE_DIR)
+
+        def add_alert_callback(self, handler):
+            print("Alert handler added.")
+        def start_monitoring(self):
+            self.is_running = True
+            print("Monitoring started. Press Ctrl+C to stop.")
+            while True:
+                pass # Simulate running
+        def stop_monitoring(self):
+            self.is_running = False
+            print("Monitoring stopped.")
+        def get_all_segments(self): return []
+        def get_audio_segment_info(self, id): return None
+        def delete_audio_segment(self, id): return False
+
+
     # Initialize enhanced system
-    warning_system = AdvancedBirdCommunicationAnalyzer()
-    
+    warning_system = MockAdvancedBirdCommunicationAnalyzer()
+
     # Add enhanced alert handler
     warning_system.add_alert_callback(enhanced_alert_handler)
-    
+
     # Start Flask server in a separate thread
     flask_thread = threading.Thread(target=start_flask_server, daemon=True)
     flask_thread.start()
@@ -913,7 +989,7 @@ def main():
     print("   • DELETE /api/audio-segment/<id> - Delete audio segment")
     print("   • GET  /api/status - Get system status")
     print("\n🎵 Audio segments will be stored in:", warning_system.AUDIO_STORAGE_DIR)
-    
+
     # Start monitoring
     try:
         warning_system.start_monitoring()

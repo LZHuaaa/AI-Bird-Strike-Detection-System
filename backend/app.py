@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import statistics
 from pydantic import BaseModel
+from sqlalchemy import or_
 
 import librosa
 import numpy as np
@@ -226,7 +227,7 @@ def enhanced_websocket_alert_handler(alert: Dict):
                 strategic_service.process_bird_alert(alert)
             )
             loop.close()
-            
+
             if strategic_response:
                 alert['strategic_recommendation'] = strategic_response.get('strategic_recommendation')
                 logger.info(f"Strategic response generated for {alert['species']['common']}")
@@ -332,7 +333,7 @@ async def startup_event():
         logger.info("Strategic Response Service initialized")
         
         # Initialize the enhanced communication analyzer
-        communication_analyzer = AdvancedBirdCommunicationAnalyzer()
+        communication_analyzer = AdvancedBirdCommunicationAnalyzer(db_manager)
         
         # Connect predator sounds system with analyzer
         if strategic_service.strategic_system and strategic_service.strategic_system.predator_sounds:
@@ -444,6 +445,8 @@ async def activate_predator_sound(sound_data: Dict):
         
         predator_sounds = strategic_service.strategic_system.predator_sounds
         sound_type = sound_data.get('sound_type', 'hawk_call')
+        target_species = sound_data.get('target_species')
+        target_species_scientific = sound_data.get('target_species_scientific')
         
         # Play the sound with default settings
         success = predator_sounds.play_predator_sound(
@@ -456,7 +459,9 @@ async def activate_predator_sound(sound_data: Dict):
             # Log the event in the database
             event = PredatorSoundEvent(
                 sound_type=sound_type,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
+                target_species=target_species,
+                target_species_scientific=target_species_scientific
             )
             db_manager.session.add(event)
             db_manager.session.commit()
@@ -550,7 +555,7 @@ async def get_species_behavior(species_name: str):
         if total_detections > 0:
             for intent, count in species_patterns.get('intents', {}).items():
                 intent_percentages[intent] = (count / total_detections) * 100
-        
+
         return {
             "species": species_name,
             "total_detections": total_detections,
@@ -796,6 +801,24 @@ async def get_audio_config():
         logger.error(f"Error getting audio config: {e}")
         return {"error": str(e)}
 
+def get_column_value(column, default=None):
+    """Safely get the value from a SQLAlchemy Column"""
+    if hasattr(column, '_value'):  # If it's a SQLAlchemy InstrumentedAttribute
+        return column._value if column._value is not None else default
+    if hasattr(column, 'value'):   # If it's a SQLAlchemy ColumnElement
+        return column.value if column.value is not None else default
+    return column if column is not None else default
+
+def get_datetime_value(column) -> datetime:
+    """Safely get datetime value from a SQLAlchemy Column"""
+    value = get_column_value(column)
+    if isinstance(value, datetime):
+        return value
+    return datetime.utcnow()  # Fallback to current time if None
+
+def set_column_value(obj, attr, value):
+    """Safely set a value on a SQLAlchemy Column"""
+    setattr(obj, attr, value)
 
 @app.post("/api/acknowledge-alert/{alert_id}")
 async def acknowledge_alert(alert_id: int):
@@ -806,7 +829,7 @@ async def acknowledge_alert(alert_id: int):
         ).first()
         
         if alert:
-            alert.acknowledged = True
+            set_column_value(alert, 'acknowledged', True)
             db_manager.session.commit()
             
             # Broadcast acknowledgment
@@ -834,8 +857,8 @@ async def resolve_alert(alert_id: int):
         ).first()
         
         if alert:
-            alert.resolved = True
-            alert.acknowledged = True
+            set_column_value(alert, 'resolved', True)
+            set_column_value(alert, 'acknowledged', True)
             db_manager.session.commit()
             
             # Broadcast resolution
@@ -868,7 +891,8 @@ def serialize_enhanced_alert(alert):
             },
             "acknowledged": alert.acknowledged,
             "resolved": alert.resolved,
-            "image_data": alert.species.image_data if alert.species else None
+            "image_data": alert.species.image_data if alert.species else None,
+             "confidence": alert.detection.confidence if alert.detection else None
         }
         
         # Add AI analysis if available
@@ -997,43 +1021,115 @@ async def get_recommended_predator_sounds(species: str, behavior: str = ""):
         return {"success": False, "message": str(e), "sounds": []}
 
 @app.get("/api/strategic/predator-sound-effectiveness")
-async def get_predator_sound_effectiveness(event_id: int, window_minutes: int = 5):
+async def get_predator_sound_effectiveness(event_id: int, window_minutes: float = 5):
     """
-    Calculate effectiveness as reduction in bird detections after sound played.
-    event_id: ID of the PredatorSoundEvent
-    window_minutes: time window before and after event (default 5 min)
+    Calculate effectiveness as reduction in bird detections after sound played, and return advanced metrics.
+    Now with logging and filtering out detections matching the predator sound played.
     """
     try:
         event = db_manager.session.query(PredatorSoundEvent).filter_by(id=event_id).first()
         if not event:
+            logger.error(f"Effectiveness: Event {event_id} not found")
             return {"success": False, "error": "Event not found"}
-        event_dt = event.timestamp
+
+        # Get actual values from SQLAlchemy columns
+        event_dt = get_datetime_value(event.timestamp)
+        # Get sound_type directly from the database to ensure we have a string
+        sound_type_str = db_manager.session.scalar(
+            db_manager.session.query(PredatorSoundEvent.sound_type).filter_by(id=event_id)
+        ) or ''
+
+        logger.info(f"Effectiveness: Calculating for event_id={event_id}, sound_type={sound_type_str}, event_time={event_dt}")
+        
+        # Now we can safely do datetime operations
         before_start = event_dt - timedelta(minutes=window_minutes)
         before_end = event_dt
         after_start = event_dt
         after_end = event_dt + timedelta(minutes=window_minutes)
-        # Count detections
-        before_count = db_manager.session.query(BirdAlert).filter(
-            BirdAlert.timestamp >= before_start,
-            BirdAlert.timestamp < before_end
-        ).count()
-        after_count = db_manager.session.query(BirdAlert).filter(
-            BirdAlert.timestamp >= after_start,
-            BirdAlert.timestamp < after_end
-        ).count()
-        if before_count == 0:
+        
+        # Query BirdDetection for before/after, excluding detections during predator sound
+        before_detections = db_manager.session.query(BirdDetection).filter(
+            BirdDetection.timestamp >= before_start,
+            BirdDetection.timestamp < before_end,
+            BirdDetection.during_predator_sound == False  # Only count normal detections
+        ).all()
+        
+        after_detections = db_manager.session.query(BirdDetection).filter(
+            BirdDetection.timestamp >= after_start,
+            BirdDetection.timestamp < after_end,
+            BirdDetection.during_predator_sound == False  # Only count normal detections
+        ).all()
+        
+        logger.info(f"Effectiveness: Raw before count: {len(before_detections)}, after count: {len(after_detections)}")
+        
+        # --- Filter out detections matching the predator sound species ---
+        # Map sound_type to possible species names (expand as needed)
+        predator_sound_species_map = {
+            'hawk_screech': ['hawk', 'Accipiter', 'Buteo', 'Falco'],
+            'eagle_cry': ['eagle', 'Aquila', 'Haliaeetus'],
+            'falcon_call': ['falcon', 'Falco'],
+            'owl_hoot': ['owl', 'Strix', 'Bubo'],
+            'cat_meow': ['cat'],
+            'snake_hiss': ['snake'],
+            'fox_bark': ['fox'],
+            'coyote_howl': ['coyote'],
+        }
+        
+        # Now we can safely use get() since sound_type_str is a string
+        filter_keywords = predator_sound_species_map.get(sound_type_str, [])
+        
+        def is_predator_detection(detection):
+            if not detection.species:
+                return False
+            species = detection.species
+            common_name = get_column_value(species.common_name, '')
+            scientific_name = get_column_value(species.scientific_name, '')
+            name = f"{common_name} {scientific_name}".lower()
+            return any(keyword.lower() in name for keyword in filter_keywords)
+        
+        filtered_after = [d for d in after_detections if not is_predator_detection(d)]
+        logger.info(f"Effectiveness: Filtered out {len(after_detections) - len(filtered_after)} detections matching predator sound species after event.")
+        
+        # Calculate metrics
+        freq_before = len(before_detections) / window_minutes
+        freq_after = len(filtered_after) / window_minutes
+        species_before = set(get_column_value(d.species_id) for d in before_detections)
+        species_after = set(get_column_value(d.species_id) for d in filtered_after)
+        
+        # Silence period: time from event to next (non-predator) detection
+        silence_period = None
+        for d in filtered_after:
+            d_timestamp = get_datetime_value(d.timestamp)
+            if d_timestamp > event_dt:
+                silence_period = (d_timestamp - event_dt).total_seconds() / 60
+                break
+        
+        # Effectiveness: percent reduction in detection frequency
+        if freq_before == 0:
             effectiveness = 0.0
+            logger.warning("Effectiveness calculation: No detections in before period, defaulting to 0%")
         else:
-            effectiveness = max(0.0, min(1.0, (before_count - after_count) / before_count))
-        # Optionally, store effectiveness in the event
-        event.effectiveness = effectiveness * 100
+            effectiveness = max(0.0, min(1.0, (freq_before - freq_after) / freq_before))
+            logger.info(f"Effectiveness calculation: freq_before={freq_before:.2f}, freq_after={freq_after:.2f}, effectiveness={effectiveness*100:.1f}%")
+        
+        # Store effectiveness in the event
+        set_column_value(event, 'effectiveness', effectiveness * 100)
         db_manager.session.commit()
+        
         return {
             "success": True,
             "effectiveness": round(effectiveness * 100, 1),
-            "before": before_count,
-            "after": after_count,
-            "event_id": event_id
+            "before": len(before_detections),
+            "after": len(filtered_after),
+            "after_unfiltered": len(after_detections),
+            "filtered_out": len(after_detections) - len(filtered_after),
+            "freq_before": round(freq_before, 2),
+            "freq_after": round(freq_after, 2),
+            "species_before": len(species_before),
+            "species_after": len(species_after),
+            "silence_period": round(silence_period, 2) if silence_period is not None else None,
+            "event_id": event_id,
+            "filter_keywords": filter_keywords
         }
     except Exception as e:
         logger.error(f"Error calculating predator sound effectiveness: {e}")
@@ -1050,19 +1146,20 @@ async def get_effectiveness_by_environment(location_type: str = 'airport'):
         return {"success": False, "error": str(e)}
 
 @app.post("/api/strategic/trigger-predator-sound")
-async def trigger_predator_sound(alert_id: int = None, detection_id: int = None, sound_type: str = 'eagle_cry'):
-    """Trigger predator sound for a specific alert or detection if high risk/critical."""
+async def trigger_predator_sound(alert_id: Optional[int] = None, detection_id: Optional[int] = None, sound_type: str = 'eagle_cry'):
     try:
         alert = None
         if alert_id:
             alert = db_manager.session.query(BirdAlert).filter(BirdAlert.id == alert_id).first()
         elif detection_id:
-            # Find alert by detection_id
             alert = db_manager.session.query(BirdAlert).filter(BirdAlert.detection_id == detection_id).first()
+        
         if not alert:
             return {"success": False, "error": "Alert not found"}
+        
         if alert.alert_level not in ['HIGH', 'CRITICAL']:
             return {"success": False, "error": "Alert is not high risk or critical"}
+        
         if strategic_service.strategic_system and strategic_service.strategic_system.predator_sounds:
             predator_sounds = strategic_service.strategic_system.predator_sounds
             predator_sounds.play_predator_sound(
@@ -1070,21 +1167,23 @@ async def trigger_predator_sound(alert_id: int = None, detection_id: int = None,
                 volume=0.8,
                 repeat=1
             )
-            # Optionally log the event
+            
+            # Create event with species information
             event = PredatorSoundEvent(
                 sound_type=sound_type,
                 timestamp=datetime.now(),
-                location_type=getattr(alert, 'location_type', 'airport')
+                location_type=getattr(alert, 'location_type', 'airport'),
+                target_species=alert.species.common_name if alert.species else None,
+                target_species_scientific=alert.species.scientific_name if alert.species else None
             )
             db_manager.session.add(event)
             db_manager.session.commit()
+            
             return {"success": True, "message": f"Predator sound {sound_type} triggered."}
         return {"success": False, "error": "Predator sound system not initialized"}
     except Exception as e:
         logger.error(f"Error triggering predator sound: {e}")
         return {"success": False, "error": str(e)}
-    
-
 
 AUDIO_SEGMENTS_DIR = os.path.join(os.path.dirname(__file__), "..", "detected_audio_segments")
 
@@ -1139,6 +1238,11 @@ async def download_audio_segment(segment_id: str):
 # Initialize weather service
 weather_service = WeatherService()
 
+# Helper function to safely get numeric values
+def get_numeric_value(column) -> float:
+    val = get_column_value(column, 0)
+    return float(val) if val is not None else 0.0
+
 @app.get("/api/risk-assessment/overall")
 def get_overall_risk(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get overall risk assessment including current risk level and contributing factors"""
@@ -1159,33 +1263,33 @@ def get_overall_risk(db: Session = Depends(get_db)) -> Dict[str, Any]:
             }
 
         # Calculate overall risk as average of recent assessments
-        risk_scores = [assessment.overall_risk_score for assessment in latest_assessments]
+        risk_scores = [get_numeric_value(assessment.overall_risk_score) for assessment in latest_assessments]
         overall_risk = int(statistics.mean(risk_scores))
 
         # Get risk factors with trends
         risk_factors = [
             {
                 "name": "Bird Activity Level",
-                "value": int(statistics.mean([a.bird_activity_risk for a in latest_assessments])),
-                "trend": "up" if any(a.bird_activity_risk > 30 for a in latest_assessments) else "stable",
+                "value": int(statistics.mean([get_numeric_value(a.bird_activity_risk) for a in latest_assessments])),
+                "trend": "up" if any(get_numeric_value(a.bird_activity_risk) > 30 for a in latest_assessments) else "stable",
                 "description": "Based on recent bird activity patterns"
             },
             {
                 "name": "Weather Impact",
-                "value": int(statistics.mean([a.weather_risk for a in latest_assessments])),
+                "value": int(statistics.mean([get_numeric_value(a.weather_risk) for a in latest_assessments])),
                 "trend": "stable",
                 "description": "Current weather conditions impact"
             },
             {
                 "name": "Seasonal Migration",
-                "value": int(statistics.mean([a.seasonal_risk for a in latest_assessments])),
-                "trend": "up" if any(a.seasonal_risk > 40 for a in latest_assessments) else "stable",
+                "value": int(statistics.mean([get_numeric_value(a.seasonal_risk) for a in latest_assessments])),
+                "trend": "up" if any(get_numeric_value(a.seasonal_risk) > 40 for a in latest_assessments) else "stable",
                 "description": "Migration season impact"
             },
             {
                 "name": "Flight Schedule Density",
-                "value": int(statistics.mean([a.traffic_density_risk for a in latest_assessments])),
-                "trend": "down" if all(a.traffic_density_risk < 30 for a in latest_assessments) else "stable",
+                "value": int(statistics.mean([get_numeric_value(a.traffic_density_risk) for a in latest_assessments])),
+                "trend": "down" if all(get_numeric_value(a.traffic_density_risk) < 30 for a in latest_assessments) else "stable",
                 "description": "Based on current flight schedule"
             }
         ]
@@ -1217,23 +1321,27 @@ def get_active_alerts(db: Session = Depends(get_db)) -> Dict[str, Any]:
         alerts = []
         for alert in recent_alerts:
             try:
+                alert_level = str(get_column_value(alert.alert_level, "low"))
+                recommended_action = str(get_column_value(alert.recommended_action, "Monitor situation"))
+                timestamp = get_datetime_value(alert.timestamp)
+                risk_score = get_column_value(alert.risk_score, 0)
+                
                 alerts.append({
-                    "id": alert.id,  # Add the alert ID from the database
-                    "level": alert.alert_level.lower() if alert.alert_level else "low",
-                    "message": alert.recommended_action or "Monitor situation",
-                    "time": alert.timestamp.strftime("%H:%M") if alert.timestamp else "N/A",
-                    "runway": alert.detection.runway_name if alert.detection else "General Area",
-                    "risk_score": alert.risk_score or 0
+                    "id": get_column_value(alert.id),
+                    "level": alert_level.lower(),
+                    "message": recommended_action,
+                    "time": timestamp.strftime("%H:%M") if timestamp else "N/A",
+                    "runway": str(get_column_value(alert.detection.runway_name, "General Area")) if alert.detection else "General Area",
+                    "risk_score": risk_score
                 })
             except Exception as e:
-                print(f"Error processing alert {alert.id}: {str(e)}")
+                print(f"Error processing alert {get_column_value(alert.id)}: {str(e)}")
                 continue
 
         return {"alerts": alerts}
 
     except Exception as e:
         print(f"Error in get_active_alerts: {str(e)}")
-        # Return empty alerts instead of throwing error
         return {"alerts": []}
 
 @app.get("/api/risk-assessment/weather")
@@ -1310,12 +1418,17 @@ def get_runway_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
                 .first()
             )
 
+            # Get risk score safely
+            risk_score = 0
+            if latest_assessment:
+                risk_score = get_numeric_value(latest_assessment.overall_risk_score)
+
             status = {
-                "name": runway.runway_name,
-                "risk": int(latest_assessment.overall_risk_score) if latest_assessment else 0,
-                "status": "caution" if (latest_assessment and latest_assessment.overall_risk_score > 20) else "clear",
+                "name": get_column_value(runway.runway_name),
+                "risk": risk_score,
+                "status": "caution" if risk_score > 20 else "clear",
                 "birdCount": active_birds,
-                "lastIncident": "Never" if not latest_incident else _format_time_ago(latest_incident.timestamp)
+                "lastIncident": "Never" if not latest_incident else _format_time_ago(get_datetime_value(latest_incident.timestamp))
             }
             runway_status.append(status)
 
@@ -1360,16 +1473,18 @@ def get_runway_map_data(runway_name: str, db: Session = Depends(get_db)) -> Dict
         bird_positions = []
         for bird in active_birds:
             # Scale bird positions to fit the map view
-            scaled_x = bird.location_x * (runway.length / 2000) + runway.length / 2
-            scaled_y = bird.location_y * (runway.width / 1000) + runway.width / 2
+            distance = get_numeric_value(bird.distance_from_runway)
+            side_clearance = get_numeric_value(runway.side_clearance)
+            scaled_x = get_numeric_value(bird.location_x) * (get_numeric_value(runway.length) / 2000) + get_numeric_value(runway.length) / 2
+            scaled_y = get_numeric_value(bird.location_y) * (get_numeric_value(runway.width) / 1000) + get_numeric_value(runway.width) / 2
             
             bird_positions.append({
-                "id": bird.id,
+                "id": get_column_value(bird.id),
                 "x": scaled_x,
                 "y": scaled_y,
                 "altitude": None,  # Not tracked in current schema
-                "direction": bird.direction or "N/A",
-                "risk_level": "HIGH" if bird.distance_from_runway < runway.side_clearance else "MEDIUM"
+                "direction": get_column_value(bird.direction, "N/A"),
+                "risk_level": "HIGH" if distance < side_clearance else "MEDIUM"
             })
 
         # Define risk zones based on latest assessment
@@ -1379,10 +1494,10 @@ def get_runway_map_data(runway_name: str, db: Session = Depends(get_db)) -> Dict
             approach_zone = {
                 "type": "high_risk",
                 "coordinates": [
-                    {"x": 0, "y": -runway.approach_zone_width/2},
-                    {"x": runway.approach_zone_length, "y": -runway.approach_zone_width/2},
-                    {"x": runway.approach_zone_length, "y": runway.approach_zone_width/2},
-                    {"x": 0, "y": runway.approach_zone_width/2}
+                    {"x": 0, "y": -get_numeric_value(runway.approach_zone_width)/2},
+                    {"x": get_numeric_value(runway.approach_zone_length), "y": -get_numeric_value(runway.approach_zone_width)/2},
+                    {"x": get_numeric_value(runway.approach_zone_length), "y": get_numeric_value(runway.approach_zone_width)/2},
+                    {"x": 0, "y": get_numeric_value(runway.approach_zone_width)/2}
                 ]
             }
             risk_zones.append(approach_zone)
@@ -1391,46 +1506,47 @@ def get_runway_map_data(runway_name: str, db: Session = Depends(get_db)) -> Dict
             runway_zone = {
                 "type": "caution",
                 "coordinates": [
-                    {"x": 0, "y": -runway.width/2},
-                    {"x": runway.length, "y": -runway.width/2},
-                    {"x": runway.length, "y": runway.width/2},
-                    {"x": 0, "y": runway.width/2}
+                    {"x": 0, "y": -get_numeric_value(runway.width)/2},
+                    {"x": get_numeric_value(runway.length), "y": -get_numeric_value(runway.width)/2},
+                    {"x": get_numeric_value(runway.length), "y": get_numeric_value(runway.width)/2},
+                    {"x": 0, "y": get_numeric_value(runway.width)/2}
                 ]
             }
             risk_zones.append(runway_zone)
 
             # Add side clearance zones if risk is high
-            if latest_assessment.overall_risk_score > 50:
+            risk_score = get_numeric_value(latest_assessment.overall_risk_score)
+            if risk_score > 50:
                 left_zone = {
                     "type": "caution",
                     "coordinates": [
-                        {"x": 0, "y": -runway.width/2 - runway.side_clearance},
-                        {"x": runway.length, "y": -runway.width/2 - runway.side_clearance},
-                        {"x": runway.length, "y": -runway.width/2},
-                        {"x": 0, "y": -runway.width/2}
+                        {"x": 0, "y": -get_numeric_value(runway.width)/2 - get_numeric_value(runway.side_clearance)},
+                        {"x": get_numeric_value(runway.length), "y": -get_numeric_value(runway.width)/2 - get_numeric_value(runway.side_clearance)},
+                        {"x": get_numeric_value(runway.length), "y": -get_numeric_value(runway.width)/2},
+                        {"x": 0, "y": -get_numeric_value(runway.width)/2}
                     ]
                 }
                 right_zone = {
                     "type": "caution",
                     "coordinates": [
-                        {"x": 0, "y": runway.width/2},
-                        {"x": runway.length, "y": runway.width/2},
-                        {"x": runway.length, "y": runway.width/2 + runway.side_clearance},
-                        {"x": 0, "y": runway.width/2 + runway.side_clearance}
+                        {"x": 0, "y": get_numeric_value(runway.width)/2},
+                        {"x": get_numeric_value(runway.length), "y": get_numeric_value(runway.width)/2},
+                        {"x": get_numeric_value(runway.length), "y": get_numeric_value(runway.width)/2 + get_numeric_value(runway.side_clearance)},
+                        {"x": 0, "y": get_numeric_value(runway.width)/2 + get_numeric_value(runway.side_clearance)}
                     ]
                 }
                 risk_zones.extend([left_zone, right_zone])
 
         return {
             "runway": {
-                "name": runway.runway_name,
-                "length": runway.length,
-                "width": runway.width,
-                "orientation": runway.orientation
+                "name": get_column_value(runway.runway_name),
+                "length": get_numeric_value(runway.length),
+                "width": get_numeric_value(runway.width),
+                "orientation": get_numeric_value(runway.orientation)
             },
             "bird_positions": bird_positions,
             "risk_zones": risk_zones,
-            "risk_level": latest_assessment.overall_risk_score if latest_assessment else 0
+            "risk_level": get_numeric_value(latest_assessment.overall_risk_score) if latest_assessment else 0
         }
 
     except Exception as e:
@@ -1482,18 +1598,20 @@ def get_runway_history(
             # Get assessments for this day
             day_assessments = [
                 a for a in historical_assessments 
-                if day_start <= a.timestamp < day_end
+                if day_start <= get_datetime_value(a.timestamp) < day_end
             ]
             
             # Get incidents for this day
             day_incidents = len([
                 i for i in incidents 
-                if day_start <= i.timestamp < day_end
+                if day_start <= get_datetime_value(i.timestamp) < day_end
             ])
 
             if day_assessments:
-                avg_risk = statistics.mean([a.overall_risk_score for a in day_assessments])
-                max_birds = max([a.bird_count or 0 for a in day_assessments])
+                risk_scores = [get_numeric_value(a.overall_risk_score) for a in day_assessments]
+                bird_counts = [get_numeric_value(a.bird_count) for a in day_assessments]
+                avg_risk = statistics.mean(risk_scores)
+                max_birds = max(bird_counts)
                 
                 history.append({
                     "date": day_start.strftime("%Y-%m-%d"),
@@ -1515,7 +1633,7 @@ def get_runway_history(
 class AlertResponse(BaseModel):
     alert_id: int
     action_taken: str
-    notes: str = None
+    notes: Optional[str] = None
     template_key: Optional[str] = None
 
 @app.post("/api/risk-assessment/alerts/{alert_id}/respond")
@@ -1534,11 +1652,11 @@ def respond_to_alert(alert_id: int, response: AlertResponse, db: Session = Depen
                 raise HTTPException(status_code=400, detail=f"Invalid template key: {response.template_key}")
 
         # Update alert with response
-        alert.acknowledged = True
-        alert.acknowledged_at = datetime.utcnow()
-        alert.action_taken = response.action_taken
-        alert.resolved = True
-        alert.resolved_at = datetime.utcnow()
+        set_column_value(alert, 'acknowledged', True)
+        set_column_value(alert, 'acknowledged_at', datetime.utcnow())
+        set_column_value(alert, 'action_taken', response.action_taken)
+        set_column_value(alert, 'resolved', True)
+        set_column_value(alert, 'resolved_at', datetime.utcnow())
 
         # Apply template-specific updates if available
         if template_data and "status_update" in template_data:
@@ -1546,12 +1664,12 @@ def respond_to_alert(alert_id: int, response: AlertResponse, db: Session = Depen
             
             # Update alert level if specified
             if "alert_level" in status_update:
-                alert.alert_level = status_update["alert_level"]
+                set_column_value(alert, 'alert_level', status_update["alert_level"])
             
             # Adjust risk score if specified
             if "risk_score_adjustment" in status_update:
                 new_risk_score = max(0, min(100, alert.risk_score + status_update["risk_score_adjustment"]))
-                alert.risk_score = new_risk_score
+                set_column_value(alert, 'risk_score', new_risk_score)
 
             # Add template info to notes
             template_notes = template_data.get("notes", "")
@@ -1567,7 +1685,7 @@ def respond_to_alert(alert_id: int, response: AlertResponse, db: Session = Depen
                 "level": alert.alert_level,
                 "risk_score": alert.risk_score,
                 "action_taken": alert.action_taken,
-                "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None
+                "resolved_at": get_datetime_value(alert.resolved_at).isoformat() if get_datetime_value(alert.resolved_at) else None
             }
         }
 
@@ -1590,48 +1708,99 @@ def _format_time_ago(timestamp: datetime) -> str:
         return f"{minutes} minutes ago"
 
 @app.get("/api/strategic/predator-sound-effectiveness-summary")
-async def predator_sound_effectiveness_summary(species: str = None):
-    """
-    Returns adaptive effectiveness stats for each sound, per species.
-    """
-    # 1. Query all PredatorSoundEvent records (optionally filter by species)
-    events = db_manager.session.query(PredatorSoundEvent)
-    if species:
-        # Join with BirdAlert/BirdDetection to filter by species if you have that info
-        # For now, assume all events are for the requested species
-        pass
+async def predator_sound_effectiveness_summary(species: Optional[str] = None):
+    """Returns adaptive effectiveness stats for each sound, per species."""
+    try:
+        # Query events with species filter
+        query = db_manager.session.query(PredatorSoundEvent)
+        if species:
+            query = query.filter(
+                or_(
+                    PredatorSoundEvent.target_species.ilike(f"%{species}%"),
+                    PredatorSoundEvent.target_species_scientific.ilike(f"%{species}%")
+                )
+            )
+        events = query.all()
 
-    # 2. Aggregate stats
-    from collections import defaultdict
-    sound_stats = defaultdict(list)
-    behavior_stats = defaultdict(list)
-    total_events = 0
+        # Group events by species
+        species_data = {}
+        for event in events:
+            target_species = str(get_column_value(event.target_species))
+            if not target_species:  # Skip events without target species
+                continue
+                
+            if target_species not in species_data:
+                species_data[target_species] = {
+                    'common_name': target_species,
+                    'scientific_name': str(get_column_value(event.target_species_scientific, target_species)),
+                    'sounds': {},
+                    'total_events': 0,
+                    'total_effectiveness': 0,
+                    'effective_events': 0
+                }
+            
+            species_info = species_data[target_species]
+            species_info['total_events'] += 1
+            
+            if event.effectiveness is not None:
+                if event.sound_type not in species_info['sounds']:
+                    species_info['sounds'][event.sound_type] = {
+                        'total': 0,
+                        'sum_effectiveness': 0,
+                        'count': 0
+                    }
+                
+                sound_info = species_info['sounds'][event.sound_type]
+                sound_info['total'] += 1
+                sound_info['sum_effectiveness'] += event.effectiveness
+                sound_info['count'] += 1
+                
+                species_info['total_effectiveness'] += event.effectiveness
+                species_info['effective_events'] += 1
 
-    for event in events:
-        if event.sound_type and event.effectiveness is not None:
-            sound_stats[event.sound_type].append(event.effectiveness)
-            # If you log behavior context, add:
-            # behavior_stats[event.behavior_context].append(event.effectiveness)
-            total_events += 1
-
-    # 3. Calculate averages
-    effectiveness_by_sound = {sound: round(sum(vals)/len(vals), 1) for sound, vals in sound_stats.items()}
-    effectiveness_by_behavior = {behavior: round(sum(vals)/len(vals), 1) for behavior, vals in behavior_stats.items()}
-
-    # 4. Recommend top 3 sounds
-    recommended_sounds = sorted(effectiveness_by_sound, key=effectiveness_by_sound.get, reverse=True)[:3]
-    average_effectiveness = round(sum([v for vals in sound_stats.values() for v in vals]) / max(1, total_events), 1)
-
-    # 5. Return data
-    return {
-        "species": species or "all",
-        "recommended_sounds": recommended_sounds,
-        "effectiveness_by_sound": effectiveness_by_sound,
-        "effectiveness_by_behavior": effectiveness_by_behavior,
-        "total_events": total_events,
-        "average_effectiveness": average_effectiveness
-    }
-    
+        # Format data for frontend
+        formatted_data = []
+        for species_name, data in species_data.items():
+            if data['effective_events'] == 0:  # Skip species with no effectiveness data
+                continue
+                
+            # Calculate effectiveness by sound
+            effectiveness_by_sound = {}
+            recommended_sounds = []
+            for sound_type, sound_data in data['sounds'].items():
+                if sound_data['count'] > 0:
+                    avg_effectiveness = sound_data['sum_effectiveness'] / sound_data['count']
+                    effectiveness_by_sound[sound_type] = avg_effectiveness
+                    if avg_effectiveness > 50:  # Only recommend sounds with >50% effectiveness
+                        recommended_sounds.append(sound_type)
+            
+            # Sort recommended sounds by effectiveness
+            recommended_sounds.sort(
+                key=lambda s: effectiveness_by_sound.get(s, 0),
+                reverse=True
+            )
+            
+            # Calculate average effectiveness
+            average_effectiveness = data['total_effectiveness'] / data['effective_events']
+            
+            formatted_data.append({
+                "common_name": data['common_name'],
+                "scientific_name": data['scientific_name'],
+                "recommended_sounds": recommended_sounds[:3],  # Top 3 most effective sounds
+                "effectiveness_by_sound": effectiveness_by_sound,
+                "effectiveness_by_behavior": {},  # We don't have behavior data yet
+                "total_events": data['total_events'],
+                "average_effectiveness": average_effectiveness
+            })
+        
+        # Sort by average effectiveness
+        formatted_data.sort(key=lambda x: x['average_effectiveness'], reverse=True)
+        
+        return formatted_data
+        
+    except Exception as e:
+        logger.error(f"Error calculating effectiveness summary: {e}")
+        return []    
     
 if __name__ == "__main__":
     uvicorn.run(

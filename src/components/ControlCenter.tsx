@@ -3,17 +3,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Activity,
-    AlertTriangle,
-    Bell,
-    CheckCircle,
-    MapPin,
-    Radio,
-    Server,
-    Settings,
-    Shield,
-    Wifi,
-    Zap
+  Activity,
+  AlertTriangle,
+  Bell,
+  CheckCircle,
+  MapPin,
+  Radio,
+  Server,
+  Shield,
+  Wifi,
+  Zap
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -98,7 +97,7 @@ const ControlCenter = () => {
     } catch (err) {
       setLastEmergencyResult('Failed to send emergency alert.');
     } finally {
-      setTimeout(() => setEmergencyMode(false), 5000);
+    setTimeout(() => setEmergencyMode(false), 5000);
       setEmergencyLoading(false);
     }
   };
@@ -248,51 +247,51 @@ const ControlCenter = () => {
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-4">
-                <Button 
-                  variant="destructive" 
-                  size="lg" 
-                  className="h-20 flex flex-col"
-                  onClick={handleEmergencyAlert}
+              <Button 
+                variant="destructive" 
+                size="lg" 
+                className="h-20 flex flex-col"
+                onClick={handleEmergencyAlert}
                   disabled={emergencyLoading}
-                >
-                  <Bell className="w-8 h-8 mb-2" />
-                  <span className="font-medium">Emergency Alert</span>
+              >
+                <Bell className="w-8 h-8 mb-2" />
+                <span className="font-medium">Emergency Alert</span>
                   {emergencyLoading && <Activity className="w-4 h-4 ml-2 animate-spin" />}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="lg" 
+              </Button>
+              <Button 
+                variant="outline" 
+                size="lg" 
                   className="h-20 flex flex-col border-green-500 text-green-700 transition-colors hover:bg-green-600 hover:text-white hover:border-green-700"
                   onClick={handleDelayFlight}
-                >
+              >
                   <MapPin className="w-8 h-8 mb-2" />
                   <span className="font-medium">Delay Flight</span>
-                </Button>
+              </Button>
               </div>
               <div className="flex flex-col gap-4">
-                <Button 
-                  variant="outline" 
-                  size="lg" 
+              <Button 
+                variant="outline" 
+                size="lg" 
                   className={`h-20 flex flex-col border-yellow-500 text-yellow-700 transition-colors ${isDeterrentPlaying ? 'opacity-60 cursor-not-allowed' : 'hover:bg-yellow-400 hover:text-white hover:border-yellow-600'}`}
                   onClick={handleSoundDeterrent}
                   disabled={deterrentLoading || isDeterrentPlaying}
-                >
+              >
                   <Zap className="w-8 h-8 mb-2" />
                   <span className="font-medium">Sound Deterrent</span>
                   {deterrentLoading && <Activity className="w-4 h-4 ml-2 animate-spin" />}
-                </Button>
+              </Button>
                 {isDeterrentPlaying && (
-                  <Button
+              <Button 
                     variant="destructive"
-                    size="lg"
+                size="lg" 
                     className="h-20 flex flex-col border-red-600 text-white bg-red-600 hover:bg-red-700 hover:border-red-700 transition-colors"
                     onClick={handleStopDeterrent}
                     disabled={deterrentLoading}
-                  >
+              >
                     <Zap className="w-8 h-8 mb-2" />
                     <span className="font-medium">Stop Deterrent</span>
                     {deterrentLoading && <Activity className="w-4 h-4 ml-2 animate-spin" />}
-                  </Button>
+              </Button>
                 )}
               </div>
             </div>
@@ -326,10 +325,10 @@ const ControlCenter = () => {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center">
-                <Server className="w-5 h-5 mr-2 text-blue-500" />
-                System Status Monitor
-              </CardTitle>
+            <CardTitle className="flex items-center">
+              <Server className="w-5 h-5 mr-2 text-blue-500" />
+              System Status Monitor
+            </CardTitle>
               <Button size="sm" variant="outline" onClick={fetchSystemStatus} disabled={statusLoading}>
                 Refresh
                 {statusLoading && <Activity className="w-4 h-4 ml-2 animate-spin" />}
@@ -386,67 +385,7 @@ const ControlCenter = () => {
       </div>
 
       {/* Advanced Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Advanced System Controls</CardTitle>
-          <CardDescription>Fine-tune system parameters and responses</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Detection Sensitivity */}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Detection Sensitivity</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Audio Threshold</span>
-                  <span>75%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: '75%' }}></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Response Time */}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Response Time</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Alert Delay</span>
-                  <span>2.3s</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '40%' }}></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Risk Threshold */}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Risk Threshold</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Alert Level</span>
-                  <span>80%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-orange-500 h-2 rounded-full" style={{ width: '80%' }}></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 flex justify-between">
-            <Button variant="outline">
-              <Settings className="w-4 h-4 mr-2" />
-              System Settings
-            </Button>
-            <Button>
-              Save Configuration
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      
     </div>
   );
 };
