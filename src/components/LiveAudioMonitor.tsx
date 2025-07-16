@@ -46,6 +46,7 @@ const IntegratedBirdMonitor = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [waveformData, setWaveformData] = useState(Array.from({ length: 50 }, () => Math.random() * 100));
+  const [frequencyData, setFrequencyData] = useState<number[]>([]); // For frequency spectrum
 
   // Detection data from backend
   const [detectedBirds, setDetectedBirds] = useState([]);
@@ -363,23 +364,103 @@ const IntegratedBirdMonitor = () => {
     };
   }, []);
 
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const dataArrayRef = useRef<Uint8Array | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
-  // Simulated waveform animation
+  // Real audio monitoring logic
   useEffect(() => {
-    if (isRecording) {
-      const audioInterval = setInterval(() => {
-        setAudioLevel(Math.random() * 100);
-      }, 150);
-
-      const waveformInterval = setInterval(() => {
-        setWaveformData(prev => [...prev.slice(1), Math.random() * 100]);
-      }, 100);
-
-      return () => {
-        clearInterval(audioInterval);
-        clearInterval(waveformInterval);
-      };
+    if (!isRecording) {
+      // Clean up audio context and streams
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (analyserRef.current) analyserRef.current.disconnect();
+      if (sourceRef.current) sourceRef.current.disconnect();
+      if (audioContextRef.current) audioContextRef.current.close();
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      audioContextRef.current = null;
+      analyserRef.current = null;
+      dataArrayRef.current = null;
+      sourceRef.current = null;
+      mediaStreamRef.current = null;
+      setFrequencyData([]);
+      return;
     }
+
+    let isMounted = true;
+    let audioContext: AudioContext;
+    let analyser: AnalyserNode;
+    let dataArray: Uint8Array;
+    let freqArray: Uint8Array;
+    let source: MediaStreamAudioSourceNode;
+    let mediaStream: MediaStream;
+
+    const setupAudio = async () => {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 128;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        freqArray = new Uint8Array(analyser.frequencyBinCount);
+        source = audioContext.createMediaStreamSource(mediaStream);
+        source.connect(analyser);
+
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+        dataArrayRef.current = dataArray;
+        sourceRef.current = source;
+        mediaStreamRef.current = mediaStream;
+
+        const updateAudio = () => {
+          if (!isMounted) return;
+          analyser.getByteTimeDomainData(dataArray);
+          analyser.getByteFrequencyData(freqArray);
+          // Calculate RMS (root mean square) for audio level
+          let sumSquares = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = (dataArray[i] - 128) / 128;
+            sumSquares += val * val;
+          }
+          const rms = Math.sqrt(sumSquares / dataArray.length);
+          setAudioLevel(Math.min(100, rms * 200)); // scale to 0-100
+
+          // Amplified waveform (option A)
+          const waveform = Array.from(dataArray).map(v => (((v - 128) / 128) * 50 * 2.5) + 50); // amplify by 2.5x
+          setWaveformData(waveform);
+
+          // Frequency spectrum (option B)
+          setFrequencyData(Array.from(freqArray));
+
+          animationFrameRef.current = requestAnimationFrame(updateAudio);
+        };
+        updateAudio();
+      } catch (err) {
+        setConnectionError('Microphone access denied or unavailable.');
+        setIsRecording(false);
+      }
+    };
+    setupAudio();
+    return () => {
+      isMounted = false;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (analyserRef.current) analyserRef.current.disconnect();
+      if (sourceRef.current) sourceRef.current.disconnect();
+      if (audioContextRef.current) audioContextRef.current.close();
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      audioContextRef.current = null;
+      analyserRef.current = null;
+      dataArrayRef.current = null;
+      sourceRef.current = null;
+      mediaStreamRef.current = null;
+      setFrequencyData([]);
+    };
   }, [isRecording]);
 
   // Get intensity color for heatmap
@@ -1250,9 +1331,7 @@ const IntegratedBirdMonitor = () => {
                 {isRecording ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
                 {isRecording ? 'Stop' : 'Start'} Monitoring
               </Button>
-              <Button variant="outline" size="sm">
-                <Settings className="w-4 h-4" />
-              </Button>
+
             </div>
           </div>
         </CardHeader>
@@ -1328,31 +1407,30 @@ const IntegratedBirdMonitor = () => {
 
       {/* Live Waveform and Activity Heatmap */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Enhanced Audio Waveform */}
+        {/* Frequency Spectrum Visualization Only */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center text-lg">
               <Activity className="w-5 h-5 mr-2 text-green-500" />
-              Live Audio Waveform
+              Live Audio Frequency Spectrum
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-32 bg-gray-900 rounded-lg p-4">
+            <div className="h-40 bg-gray-900 rounded-lg p-4">
               <div className="h-full flex items-end space-x-1">
-                {waveformData.map((height, index) => (
+                {frequencyData.map((value, index) => (
                   <div
                     key={index}
-                    className={`rounded-t-sm flex-1 transition-all duration-100 ${isRecording ? 'bg-gradient-to-t from-blue-500 to-cyan-400' : 'bg-gray-600'
-                      }`}
-                    style={{ height: `${height}%` }}
+                    className={`rounded-t-sm flex-1 transition-all duration-100 ${isRecording ? 'bg-gradient-to-t from-purple-500 to-pink-400' : 'bg-gray-600'}`}
+                    style={{ height: `${(value / 255) * 100}%` }}
                   />
                 ))}
               </div>
             </div>
+ 
             <div className="mt-4 text-xs text-slate-600 text-center">
               Frequency Range: {audioConfig.frequency_range} | Sample Rate: {(audioConfig.sample_rate / 1000).toFixed(1)}kHz
             </div>
-
           </CardContent>
         </Card>
 
