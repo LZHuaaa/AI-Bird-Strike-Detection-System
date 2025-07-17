@@ -156,11 +156,11 @@ npm run dev
 - **Audio Classification**:
   - MIT/ast-finetuned-audioset-10-10-0.4593
   - wav2vec2-lg-xlsr for emotion recognition
-- **Species Identification**: BirdNET Analyzer
+- **Species Identification**: BirdNET Analyzer [https://github.com/birdnet-team/BirdNET-Analyzer]
 - **Neural Networks**: 
   - PyTorch
-  - Hugging Face Transformers
-  - EfficientNet-B0 for custom classification
+  - Hugging Face Transformers [https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593]
+  - EfficientNet-B0 for custom classification [https://huggingface.co/facebook/wav2vec2-base-960h]
 - **Language Models**: Google Gemini API
 
 ### 📡 APIs & Services
