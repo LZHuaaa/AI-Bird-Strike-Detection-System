@@ -441,7 +441,7 @@ const RiskAssessment = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-3xl font-bold text-slate-700">{overallRisk}%</div>
+                  <div className="text-3xl font-bold text-slate-700">{Math.round(overallRisk)}%</div>
                   <div className="text-sm text-slate-600">Current Risk Level</div>
                 </div>
                 <div className={`px-4 py-2 rounded-lg ${getRiskColor(overallRisk)}`}>
@@ -716,7 +716,7 @@ const RiskAssessment = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>Risk Level:</span>
-                    <span className="font-medium">{runway.risk}%</span>
+                    <span className="font-medium">{Math.round(runway.risk)}%</span>
                   </div>
                   <Progress value={runway.risk} className="h-2" />
                   <div className="flex justify-between text-sm">
@@ -861,7 +861,7 @@ const RiskAssessment = () => {
           <div className="mt-4 grid grid-cols-3 gap-4">
             <div className="p-4 bg-slate-50 rounded-lg">
               <div className="text-sm font-medium">Risk Level</div>
-              <div className="text-2xl font-bold text-red-600">{selectedRunway?.risk || 0}%</div>
+              <div className="text-2xl font-bold text-red-600">{Math.round(selectedRunway?.risk || 0)}%</div>
               <div className="text-xs text-slate-500 mt-1">Based on current conditions</div>
             </div>
             <div className="p-4 bg-slate-50 rounded-lg">
@@ -989,7 +989,7 @@ const RiskAssessment = () => {
                             data.risk_level > 25 ? 'default' :
                             'secondary'
                           }>
-                            {data.risk_level}%
+                            {Math.round(data.risk_level)}%
                           </Badge>
                         </div>
                       </td>

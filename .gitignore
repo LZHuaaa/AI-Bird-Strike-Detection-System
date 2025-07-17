@@ -4,8 +4,6 @@ bird_strike_env/
 *.pyc
 __pycache__/
 
-# Environment files
-*.env
 
 # Database
 *.db

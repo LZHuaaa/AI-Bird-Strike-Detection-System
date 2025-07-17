@@ -1681,26 +1681,36 @@ const IntegratedBirdMonitor = () => {
               <span className="text-lg font-bold text-black-800">{criticalActionModal.action}</span>
               <br />
               <span className="text-red-600 font-semibold">
-                You can respond in {criticalCountdown !== null ? criticalCountdown : 5} seconds...
+                Auto-action will be taken in {criticalCountdown !== null ? criticalCountdown : 5} seconds...
               </span>
             </p>
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => setCriticalActionModal(null)}
-                disabled={criticalCountdown !== 0}
+                onClick={() => {
+                  if (criticalCountdownRef.current) clearInterval(criticalCountdownRef.current);
+                  setCriticalActionModal(null);
+                  setCriticalCountdown(null);
+                }}
               >
                 Deny
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => {
+                  if (criticalCountdownRef.current) clearInterval(criticalCountdownRef.current);
                   setCriticalActionModal(null);
+                  setCriticalCountdown(null);
                   // Optionally, show a toast or feedback here
+                  toast({
+                    title: "Critical Action Executed",
+                    description: "Emergency procedures have been initiated.",
+                    variant: "destructive",
+                    duration: 5000
+                  });
                 }}
-                disabled={criticalCountdown !== 0}
               >
-                Allow
+                Allow Now
               </Button>
             </div>
           </div>
