@@ -73,15 +73,7 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
   - Purpose: Bird call classification
   - Features: Optimized for audio spectrograms
 
-### 5. Strategic Analysis Models
-- **distilbert-base-uncased-finetuned-sst-2-english**
-  - Purpose: Threat assessment and classification
-  - Features: Real-time risk evaluation
-- **microsoft/DialoGPT-medium**
-  - Purpose: Strategic response generation
-  - Features: Context-aware action planning
-
-### 6. Natural Language Generation
+### 5. Natural Language Generation
 - **Google Gemini API**
   - Purpose: Call interpretation and bird information
   - Features: Natural language explanations and descriptions
