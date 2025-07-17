@@ -154,8 +154,8 @@ npm run dev
 
 ### 🤖 AI Models
 - **Audio Classification**:
-  - MIT/ast-finetuned-audioset-10-10-0.4593
-  - wav2vec2-lg-xlsr for emotion recognition
+  - MIT/ast-finetuned-audioset-10-10-0.4593 [https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593]
+  - wav2vec2-lg-xlsr for emotion recognition [https://huggingface.co/facebook/wav2vec2-large-xlsr-53]
 - **Species Identification**: BirdNET Analyzer [https://github.com/birdnet-team/BirdNET-Analyzer]
 - **Neural Networks**: 
   - PyTorch
