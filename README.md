@@ -106,7 +106,7 @@ cd Avian-Intel-Bridge-New
 npm install
 
 # Step 4: Set up backend using Python 3.11⚠️.  
-# ⚠️ Make sure you have Python 3.11 installed: https://www.python.org/downloads/
+# ⚠️ Make sure you have Python 3.11 installed: https://www.python.org/downloads/](https://www.python.org/downloads/release/python-3110/
 
 # 4.1 Create a virtual environment  
 py -3.11 -m venv .venv
