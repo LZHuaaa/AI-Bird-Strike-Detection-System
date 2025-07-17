@@ -5,8 +5,7 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
 
 <img width="898" height="559" alt="image" src="https://github.com/user-attachments/assets/cc59abdd-8062-4515-8208-27efdc110ab7" />
 
-*Real-world incident highlighting the dangers of bird strikes*
-
+<p align="center"><em>Real-world incident highlighting the dangers of bird strikes</em></p>
 
 ## 🚀 Key Features
 
@@ -74,10 +73,18 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
   - Purpose: Bird call classification
   - Features: Optimized for audio spectrograms
 
-### 5. Language Models
+### 5. Strategic Analysis Models
+- **distilbert-base-uncased-finetuned-sst-2-english**
+  - Purpose: Threat assessment and classification
+  - Features: Real-time risk evaluation
+- **microsoft/DialoGPT-medium**
+  - Purpose: Strategic response generation
+  - Features: Context-aware action planning
+
+### 6. Natural Language Generation
 - **Google Gemini API**
-  - Purpose: Call interpretation and behavioral analysis
-  - Features: Advanced natural language understanding
+  - Purpose: Call interpretation and bird information
+  - Features: Natural language explanations and descriptions
 
 ## 🎯 High-Risk Species Monitoring
 Special monitoring for Malaysian airport high-risk species:
@@ -85,7 +92,7 @@ Special monitoring for Malaysian airport high-risk species:
 - Large-billed Crow (Corvus macrorhynchos)
 - White-bellied Sea Eagle (Haliaeetus leucogaster)
 - Javan Myna (Acridotheres javanicus)
-- 
+
 ## 🛠 Installation
 
 ```sh
