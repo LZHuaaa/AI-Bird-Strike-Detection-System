@@ -172,4 +172,6 @@ npm run dev
   - Risk Assessment Service
   - Audio Monitoring Service
   - Bird Translation Service
+ 
+<img width="799" height="455" alt="image" src="https://github.com/user-attachments/assets/76c88301-be78-4d1e-9420-9f05100c73b3" />
 
