@@ -55,7 +55,7 @@ class AdvancedBirdCommunicationAnalyzer:
         self.FORMAT = pyaudio.paInt16
         self.CHANNELS = 1
         self.RATE = 44100
-        self.RECORD_SECONDS = 3
+        self.RECORD_SECONDS = 4
 
         # Audio storage settings
         self.AUDIO_STORAGE_DIR = os.path.join(os.path.dirname(__file__), "..", "detected_audio_segments")
@@ -150,13 +150,28 @@ class AdvancedBirdCommunicationAnalyzer:
             segment_id = str(uuid.uuid4())[:8]
             filename = f"bird_detection_{timestamp}_{segment_id}.wav"
             file_path = os.path.join(self.AUDIO_STORAGE_DIR, filename)
+        
+            # Calculate expected samples for 4 seconds
+            expected_samples = int(self.RATE * self.RECORD_SECONDS)
+
+            # Convert audio_data to numpy array
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+
+                # Ensure exactly 4 seconds by padding or trimming
+            if len(audio_array) < expected_samples:
+            # Pad with silence if shorter
+                padding = np.zeros(expected_samples - len(audio_array), dtype=np.int16)
+                audio_array = np.concatenate([audio_array, padding])
+            elif len(audio_array) > expected_samples:
+                # Trim if longer
+                audio_array = audio_array[:expected_samples]
             
             # Save audio file
             with wave.open(file_path, 'wb') as wf:
                 wf.setnchannels(self.CHANNELS)
                 wf.setsampwidth(2)
                 wf.setframerate(self.RATE)
-                wf.writeframes(audio_data)
+                wf.writeframes(audio_array.tobytes())
             
             # Create segment metadata
             segment_metadata = {
