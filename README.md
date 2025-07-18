@@ -73,15 +73,7 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
   - Purpose: Bird call classification
   - Features: Optimized for audio spectrograms
 
-### 5. Strategic Analysis Models
-- **distilbert-base-uncased-finetuned-sst-2-english**
-  - Purpose: Threat assessment and classification
-  - Features: Real-time risk evaluation
-- **microsoft/DialoGPT-medium**
-  - Purpose: Strategic response generation
-  - Features: Context-aware action planning
-
-### 6. Natural Language Generation
+### 5. Natural Language Generation
 - **Google Gemini API**
   - Purpose: Call interpretation and bird information
   - Features: Natural language explanations and descriptions
@@ -106,7 +98,7 @@ cd Avian-Intel-Bridge-New
 npm install
 
 # Step 4: Set up backend using Python 3.11⚠️.  
-# ⚠️ Make sure you have Python 3.11 installed: https://www.python.org/downloads/
+# ⚠️ Make sure you have Python 3.11 installed: https://www.python.org/downloads/](https://www.python.org/downloads/release/python-3110/
 
 # 4.1 Create a virtual environment  
 py -3.11 -m venv .venv
@@ -162,13 +154,13 @@ npm run dev
 
 ### 🤖 AI Models
 - **Audio Classification**:
-  - MIT/ast-finetuned-audioset-10-10-0.4593
-  - wav2vec2-lg-xlsr for emotion recognition
-- **Species Identification**: BirdNET Analyzer
+  - MIT/ast-finetuned-audioset-10-10-0.4593 [https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593]
+  - wav2vec2-lg-xlsr for emotion recognition [https://huggingface.co/facebook/wav2vec2-large-xlsr-53]
+- **Species Identification**: BirdNET Analyzer [https://github.com/birdnet-team/BirdNET-Analyzer]
 - **Neural Networks**: 
   - PyTorch
-  - Hugging Face Transformers
-  - EfficientNet-B0 for custom classification
+  - Hugging Face Transformers [https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593]
+  - EfficientNet-B0 for custom classification [https://huggingface.co/facebook/wav2vec2-base-960h]
 - **Language Models**: Google Gemini API
 
 ### 📡 APIs & Services
