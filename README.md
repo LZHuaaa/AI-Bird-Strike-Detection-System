@@ -75,7 +75,7 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
   - Features: Unsupervised learning, bird behavior clustering
   - Implementation: Predicts behavioral intent and interaction patterns
 
- - **Custom Risk Assessment Model**
+- **Custom Risk Assessment Model**
   - Purpose: Real-time risk score calculation
   - Features: Multi-factor weighted scoring, Adaptive risk level determination, Behavioral context inclusion
   - Implementation: Computes threat levels dynamically for strike prevention systems
