@@ -53,30 +53,44 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
 
 ## 🤖 AI Models Used
 
-### 1. Audio Classification Models
-- **MIT/ast-finetuned-audioset-10-10-0.4593**
-  - Purpose: General audio classification
-  - Features: Multi-label audio event detection
-
-### 2. Speech Emotion Recognition
-- **ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition**
-  - Purpose: Emotional content analysis in bird calls
-  - Features: Advanced emotion detection
-
-### 3. Species Identification
+### 1. 🔊 Audio Classification & Analysis 
 - **BirdNET Analyzer**
   - Purpose: Bird species identification
   - Features: High-accuracy species detection
+  - Implementation: Used for initial detection and species confidence scoring
 
-### 4. Custom Neural Networks
-- **EfficientNet-B0**
-  - Purpose: Bird call classification
-  - Features: Optimized for audio spectrograms
+- **MIT/ast-finetuned-audioset-10-10-0.4593**
+  - Purpose: General audio classification
+  - Features: Multi-label audio event detection, behavioral context analysis
+  - Implementation: Call type classification and behavioral context determination
 
-### 5. Natural Language Generation
+- **ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition**
+  - Purpose: Emotional content analysis in bird calls
+  - Features: Advanced emotion detection, urgency level detection
+  - Implementation: Determines emotional intensity and urgency in bird vocalizations
+
+### 2. 🧠 Behavioral & Risk Analysis
+- **KMeans Clustering**
+  - Purpose: Behavioral pattern grouping
+  - Features: Unsupervised learning, bird behavior clustering
+  - Implementation: Predicts behavioral intent and interaction patterns
+
+ - **Custom Risk Assessment Model**
+  - Purpose: Real-time risk score calculation
+  - Features: Multi-factor weighted scoring, Adaptive risk level determination, Behavioral context inclusion
+  - Implementation: Computes threat levels dynamically for strike prevention systems
+
+### 3. 💬 Natural Language Generation
 - **Google Gemini API**
   - Purpose: Call interpretation and bird information
   - Features: Natural language explanations and descriptions
+  - Implementation: Converts technical detection data into explanatory reports
+ 
+### 4. 🦅 Strategic Response System
+- **Predator Sound Effectiveness Analysi**
+  - Purpose: Measure and optimize acoustic deterrent impact
+  - Features: Species-specific response tracking, Before-and-after comparison analysis, Adaptive sound recommendation system
+  - Implementation: Monitors target species behavior before & after predator calls, suggests most effective deterrent based on historical data (>50% effectiveness prioritized)
 
 ## 🎯 High-Risk Species Monitoring
 Special monitoring for Malaysian airport high-risk species:
@@ -160,7 +174,6 @@ npm run dev
 - **Neural Networks**: 
   - PyTorch
   - Hugging Face Transformers [https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593]
-  - EfficientNet-B0 for custom classification [https://huggingface.co/facebook/wav2vec2-base-960h]
 - **Language Models**: Google Gemini API
 
 ### 📡 APIs & Services
