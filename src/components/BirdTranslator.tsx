@@ -168,29 +168,58 @@ const BirdTranslator = () => {
         aiInsights: data.ai_insights,
         imageData: data.image_data,
         audio_url: data.audio_url || (data.audio_segment && data.audio_segment.segment_id ? `${AUDIO_API_BASE}/audio-segment/${data.audio_segment.segment_id}/play` : undefined),
-        audio_segment: data.audio_segment
+        audio_segment: data.audio_segment,
+        detectionId: data.detection_id,
+        translationPending: data.translation_pending
       };
 
-      setCurrentTranslation(newTranslation);
+      // Check if this is a translation update
+      if (data.is_translation_update) {
+        // Update existing translation
+        if (currentTranslation?.detectionId === data.detection_id) {
+          setCurrentTranslation(prev => ({
+            ...prev,
+            translation: data.ai_insights?.call_interpretation?.[0] || 'Translation failed',
+            aiInsights: data.ai_insights,
+            translationPending: false
+          }));
+        }
+        
+        // Update in recent translations
+        setRecentTranslations(prev => prev.map(trans => 
+          trans.detectionId === data.detection_id
+            ? {
+                ...trans,
+                translation: data.ai_insights?.call_interpretation?.[0] || 'Translation failed',
+                translationPending: false
+              }
+            : trans
+        ));
+      } else {
+        // New detection
+        setCurrentTranslation(newTranslation);
 
-      // Add to recent translations
-      setRecentTranslations(prev => [
-        {
-          species: newTranslation.species,
-          call: newTranslation.originalCall,
-          translation: newTranslation.translation,
-          emotion: newTranslation.emotion,
-          context: newTranslation.context,
-          confidence: newTranslation.confidence,
-          timestamp: newTranslation.timestamp,
-          alertLevel: newTranslation.alertLevel,
-          riskScore: newTranslation.riskScore,
-          id: data.id,
-          audio_url: newTranslation.audio_url,
-          audio_segment: newTranslation.audio_segment
-        },
-        ...prev.slice(0, 9)
-      ]);
+        // Add to recent translations
+        setRecentTranslations(prev => [
+          {
+            species: newTranslation.species,
+            call: newTranslation.originalCall,
+            translation: newTranslation.translation,
+            emotion: newTranslation.emotion,
+            context: newTranslation.context,
+            confidence: newTranslation.confidence,
+            timestamp: newTranslation.timestamp,
+            alertLevel: newTranslation.alertLevel,
+            riskScore: newTranslation.riskScore,
+            id: data.id,
+            detectionId: data.detection_id,
+            audio_url: newTranslation.audio_url,
+            audio_segment: newTranslation.audio_segment,
+            translationPending: newTranslation.translationPending
+          },
+          ...prev.slice(0, 9)
+        ]);
+      }
     }
   };
 
@@ -530,7 +559,14 @@ const BirdTranslator = () => {
                     <span className="font-medium">AI Backend Analysis</span>
                   </div>
                   <blockquote className="text-lg italic text-slate-700 border-l-4 border-purple-500 pl-4">
-                    "{currentTranslation.translation}"
+                    {currentTranslation.translationPending ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-purple-500 border-t-transparent"></div>
+                        <span>Processing translation...</span>
+                      </div>
+                    ) : (
+                      `"${currentTranslation.translation}"`
+                    )}
                   </blockquote>
                   <div className="mt-4 p-3 bg-purple-50 rounded text-sm">
                     <strong>Context Analysis:</strong> This vocalization indicates {currentTranslation.context.replace('_', ' ')},

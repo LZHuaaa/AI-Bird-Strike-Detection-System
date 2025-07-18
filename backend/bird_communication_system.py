@@ -12,15 +12,18 @@ import threading
 import time
 import os
 import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+import requests
 import torch
 import tensorflow as tf
+import base64
 from datetime import datetime
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
 import json
 import requests
-import cv2
-from transformers import pipeline, AutoFeatureExtractor, AutoModelForAudioClassification
 import scipy.signal
 try:
     from scipy.signal.windows import hann
@@ -39,9 +42,9 @@ from flask_cors import CORS
 import threading
 import shutil
 from pathlib import Path
-import base64
-warnings.filterwarnings('ignore')
 import logging
+from utils.gemini_utils import get_call_interpretation
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -444,149 +447,6 @@ class AdvancedBirdCommunicationAnalyzer:
         
         return min(risk_score, 1.0)  # Cap at 1.0
 
-    def analyze_audio_with_ai(self, audio_data):
-        """Comprehensive AI analysis of audio data"""
-        try:
-            # Extract features
-            audio_features = self.extract_audio_features(audio_data)
-            
-            # BirdNET species identification
-            temp_file = f"temp_audio_{int(time.time())}.wav"
-            
-            # Save audio data
-            with wave.open(temp_file, 'wb') as wf:
-                wf.setnchannels(self.CHANNELS)
-                wf.setsampwidth(2)
-                wf.setframerate(self.RATE)
-                wf.writeframes(audio_data)
-            
-            # Analyze with BirdNET
-            recording = Recording(
-                self.birdnet_analyzer,
-                temp_file,
-                lat=3.1390,  # Johor Bahru
-                lon=101.6869,
-                min_conf=0.3  #confidence threshold
-            )
-            
-            recording.analyze()
-            
-            alerts = []
-            
-            if recording.detections:
-                # Save audio segment with detection info
-                detection_summary = {
-                    'total_detections': len(recording.detections),
-                    'species_detected': [d['common_name'] for d in recording.detections],
-                    'max_confidence': max(d['confidence'] for d in recording.detections),
-                    'analysis_timestamp': datetime.now().isoformat()
-                }
-                
-                segment_metadata = self.save_audio_segment(audio_data, detection_summary)
-                
-                for detection in recording.detections:
-                    
-                    if detection['confidence'] < 0.3:  #confidence threshold
-                        continue  # Skip low-confidence detections
-                    # Analyze communication patterns
-                    species_info = {
-                        'scientific': detection['scientific_name'],
-                        'common': detection['common_name']
-                    }
-                    
-                    communication_patterns = self.analyze_communication_patterns(
-                        audio_features, species_info
-                    )
-                    
-                    # Predict behavioral intent
-                    behavioral_intent = self.predict_behavioral_intent(
-                        communication_patterns, self.communication_history
-                    )
-                    
-                    # Calculate enhanced risk score
-                    risk_score = self.calculate_enhanced_risk_score(
-                        detection['scientific_name'],
-                        detection['confidence'],
-                        communication_patterns,
-                        behavioral_intent
-                    )
-                    
-                    # Determine alert level with enhanced logic
-                    if risk_score > 0.8:
-                        alert_level = 'CRITICAL'
-                        action = 'IMMEDIATE_RUNWAY_CLOSURE'
-                    elif risk_score > 0.6:
-                        alert_level = 'HIGH'
-                        action = 'DELAY_TAKEOFF'
-                    elif risk_score > 0.4:
-                        alert_level = 'MEDIUM'
-                        action = 'INCREASE_MONITORING'
-                    else:
-                        alert_level = 'LOW'
-                        action = 'CONTINUE_NORMAL'
-                    
-                    # Create comprehensive alert
-                    alert = {
-                        'timestamp': datetime.now().isoformat(),
-                        'species': species_info,
-                        'confidence': detection['confidence'],
-                        'risk_score': risk_score,
-                        'alert_level': alert_level,
-                        'recommended_action': action,
-                        'communication_analysis': communication_patterns,
-                        'behavioral_prediction': behavioral_intent,
-                        'detection_time': {
-                            'start': detection['start_time'],
-                            'end': detection['end_time']
-                        },
-                        'audio_segment': segment_metadata if segment_metadata else None,
-                        'ai_insights': {
-                            'call_interpretation': self.interpret_call_meaning(communication_patterns),
-                            'threat_assessment': self.assess_threat_level(communication_patterns, behavioral_intent),
-                            'recommended_monitoring': self.get_monitoring_recommendations(behavioral_intent)
-                        }
-                    }
-                    
-                    # Ensure audio_segment['filename'] is present if segment_metadata exists
-                    if segment_metadata and 'filename' in segment_metadata:
-                        alert['audio_segment']['filename'] = segment_metadata['filename']
-                    
-                    # Store in communication history
-                    self.communication_history.append(communication_patterns)
-                    if len(self.communication_history) > 100:  # Keep last 100 patterns
-                        self.communication_history = self.communication_history[-100:]
-                    
-                    # Add detection to database with predator sound status
-                    detection_data = {
-                        'species_id': self.get_species_id(species_info),
-                        'timestamp': datetime.fromisoformat(alert['timestamp']),
-                        'confidence': detection['confidence'],
-                        'call_type': communication_patterns['call_type'],
-                        'emotional_state': communication_patterns['emotional_state'],
-                        'behavioral_pattern': behavioral_intent['primary_intent'],
-                        'group_behavior': communication_patterns['flock_communication'],
-                        'audio_segment_filename': segment_metadata['filename'] if segment_metadata else None,
-                        'during_predator_sound': self.is_predator_sound_active()  # NEW: Track predator sound status
-                    }
-                    self.db_manager.add_detection(detection_data)
-                    
-                    # Only add to alerts list if not during predator sound playback
-                    if not self.is_predator_sound_active():
-                        alerts.append(alert)
-                    # Trigger callbacks
-                    for callback in self.alert_callbacks:
-                        callback(alert)
-            
-            # Clean up
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            
-            return alerts
-            
-        except Exception as e:
-            print(f"❌ Error in AI analysis: {e}")
-            return []
-
     def interpret_call_meaning(self, communication_patterns):
         """Interpret the meaning of bird calls based on patterns"""
         interpretations = []
@@ -605,6 +465,208 @@ class AdvancedBirdCommunicationAnalyzer:
         
         return interpretations if interpretations else ["Normal vocalization"]
 
+    def get_rich_call_interpretation(self, communication_patterns, species_info, audio_path=None):
+        """Get comprehensive call interpretation using Gemini"""
+        baseline = self.interpret_call_meaning(communication_patterns)
+    
+        # Use Gemini LLM for a richer explanation
+        gemini_result = None
+        try:
+            bird_name = species_info.get('common', 'Unknown') if species_info else 'Unknown'
+            call_type = communication_patterns.get('call_type', 'unknown')
+            emotion = communication_patterns.get('emotional_state', None)
+            context = communication_patterns.get('behavioral_context', None)
+        
+            print(f"[Gemini] Calling get_call_interpretation with: bird_name={bird_name}, call_type={call_type}, emotion={emotion}, context={context}")
+            
+            # Fixed function call to match updated signature
+            gemini_result = get_call_interpretation(
+                bird_name,  # positional argument
+                call_type=call_type,  # keyword arguments
+                emotion=emotion,
+                context=context
+            )
+            print(f"[Gemini] Result: {gemini_result}")
+        
+        except Exception as e:
+            print(f"[Gemini] Exception: {e}")
+            gemini_result = None
+    
+        # Compose result
+        result = []
+        if gemini_result:
+            result.append(gemini_result)  # Remove the 'Gemini:' prefix
+        result += baseline
+    
+        print(f"[Translation] Final result: {result}")
+        return result
+
+    def analyze_audio_with_ai(self, audio_data):
+        """Comprehensive AI analysis of audio data"""
+        try:
+            # Extract features
+            audio_features = self.extract_audio_features(audio_data)
+            # BirdNET species identification
+            temp_file = f"temp_audio_{int(time.time())}.wav"
+            # Save audio data
+            with wave.open(temp_file, 'wb') as wf:
+                wf.setnchannels(self.CHANNELS)
+                wf.setsampwidth(2)
+                wf.setframerate(self.RATE)
+                wf.writeframes(audio_data)
+            # Analyze with BirdNET
+            recording = Recording(
+                self.birdnet_analyzer,
+                temp_file,
+                lat=3.1390,  # Johor Bahru
+                lon=101.6869,
+                min_conf=0.3  #confidence threshold
+            )
+            recording.analyze()
+            alerts = []
+            if recording.detections:
+                # Save audio segment with detection info
+                detection_summary = {
+                    'total_detections': len(recording.detections),
+                    'species_detected': [d['common_name'] for d in recording.detections],
+                    'max_confidence': max(d['confidence'] for d in recording.detections),
+                    'analysis_timestamp': datetime.now().isoformat()
+                }
+                segment_metadata = self.save_audio_segment(audio_data, detection_summary)
+                
+                for detection in recording.detections:
+                    if detection['confidence'] < 0.3:  #confidence threshold
+                        continue  # Skip low-confidence detections
+                    
+                    # Analyze communication patterns
+                    species_info = {
+                        'scientific': detection['scientific_name'],
+                        'common': detection['common_name']
+                    }
+                    communication_patterns = self.analyze_communication_patterns(
+                        audio_features, species_info
+                    )
+                    # Predict behavioral intent
+                    behavioral_intent = self.predict_behavioral_intent(
+                        communication_patterns, self.communication_history
+                    )
+                    # Calculate enhanced risk score
+                    risk_score = self.calculate_enhanced_risk_score(
+                        detection['scientific_name'],
+                        detection['confidence'],
+                        communication_patterns,
+                        behavioral_intent
+                    )
+                    # Determine alert level with enhanced logic
+                    if risk_score > 0.8:
+                        alert_level = 'CRITICAL'
+                        action = 'IMMEDIATE_RUNWAY_CLOSURE'
+                    elif risk_score > 0.6:
+                        alert_level = 'HIGH'
+                        action = 'DELAY_TAKEOFF'
+                    elif risk_score > 0.4:
+                        alert_level = 'MEDIUM'
+                        action = 'INCREASE_MONITORING'
+                    else:
+                        alert_level = 'LOW'
+                        action = 'CONTINUE_NORMAL'
+
+                    # Create initial alert without translation
+                    alert = {
+                        'timestamp': datetime.now().isoformat(),
+                        'species': species_info,
+                        'confidence': detection['confidence'],
+                        'risk_score': risk_score,
+                        'alert_level': alert_level,
+                        'recommended_action': action,
+                        'communication_analysis': communication_patterns,
+                        'behavioral_prediction': behavioral_intent,
+                        'detection_time': {
+                            'start': detection['start_time'],
+                            'end': detection['end_time']
+                        },
+                        'audio_segment': segment_metadata if segment_metadata else None,
+                        'ai_insights': {
+                            'call_interpretation': ["Processing translation..."],
+                            'threat_assessment': self.assess_threat_level(communication_patterns, behavioral_intent),
+                            'recommended_monitoring': self.get_monitoring_recommendations(behavioral_intent)
+                        },
+                        'translation_pending': True  # Flag to indicate translation is coming
+                    }
+
+                    # Ensure audio_segment['filename'] is present if segment_metadata exists
+                    if segment_metadata and 'filename' in segment_metadata:
+                        alert['audio_segment']['filename'] = segment_metadata['filename']
+
+                    # Store in communication history
+                    self.communication_history.append(communication_patterns)
+                    if len(self.communication_history) > 100:  # Keep last 100 patterns
+                        self.communication_history = self.communication_history[-100:]
+
+                    # Add detection to database with predator sound status
+                    detection_data = {
+                        'species_id': self.get_species_id(species_info),
+                        'timestamp': datetime.fromisoformat(alert['timestamp']),
+                        'confidence': detection['confidence'],
+                        'call_type': communication_patterns['call_type'],
+                        'emotional_state': communication_patterns['emotional_state'],
+                        'behavioral_pattern': behavioral_intent['primary_intent'],
+                        'group_behavior': communication_patterns['flock_communication'],
+                        'audio_segment_filename': segment_metadata['filename'] if segment_metadata else None,
+                        'during_predator_sound': self.is_predator_sound_active()  # Track predator sound status
+                    }
+                    detection_id = self.db_manager.add_detection(detection_data)
+                    alert['detection_id'] = detection_id
+
+                    # Only add to alerts list if not during predator sound playback
+                    if not self.is_predator_sound_active():
+                        alerts.append(alert)
+
+                    # Send initial alert immediately through all callbacks
+                    for callback in self.alert_callbacks:
+                        callback(alert)
+
+                    # Process translation asynchronously
+                    def process_translation():
+                        try:
+                            translation = self.get_rich_call_interpretation(
+                                communication_patterns, species_info, temp_file)
+                            
+                            # Update alert with translation
+                            alert['ai_insights']['call_interpretation'] = translation
+                            alert['translation_pending'] = False
+                            
+                            # Send updated alert through all callbacks
+                            alert['is_translation_update'] = True  # Flag to indicate this is a translation update
+                            for callback in self.alert_callbacks:
+                                callback(alert)
+                        except Exception as e:
+                            logger.error(f"Translation processing error: {e}")
+                            # Send error update through all callbacks
+                            alert['ai_insights']['call_interpretation'] = ["Translation failed"]
+                            alert['translation_pending'] = False
+                            alert['is_translation_update'] = True
+                            for callback in self.alert_callbacks:
+                                callback(alert)
+
+                    # Start translation processing in background
+                    translation_thread = threading.Thread(target=process_translation)
+                    translation_thread.daemon = True
+                    translation_thread.start()
+
+            # Cleanup
+            try:
+                os.remove(temp_file)
+            except Exception as e:
+                print(f"Error removing temp file: {e}")
+
+            return alerts
+
+        except Exception as e:
+            print(f"❌ Error in AI analysis: {e}")
+            return []
+
+    
     def assess_threat_level(self, communication_patterns, behavioral_intent):
         """Assess the threat level based on communication and behavior"""
         threat_factors = []

@@ -29,6 +29,7 @@ import random
 from pydantic import BaseModel
 import logging
 import os
+from sqlalchemy import select
 
 
 # Import enhanced detection system and DB manager
@@ -150,6 +151,9 @@ behavioral_patterns = {}
 def enhanced_websocket_alert_handler(alert: Dict):
     """Enhanced alert handler with AI communication analysis"""
     try:
+        # Check if this is a translation update
+        is_translation_update = alert.pop('is_translation_update', False)
+        
         species = db_manager.get_species_by_name(alert['species']['common'])
         image_service = BirdImageService()
 
@@ -190,136 +194,99 @@ def enhanced_websocket_alert_handler(alert: Dict):
         # Always attach image_data to alert
         alert['image_data'] = getattr(species, 'image_data', None)
 
-        # --- NEW: Always save a detection before saving an alert ---
-        audio_segment_filename = None
-        if 'audio_segment' in alert and alert['audio_segment'] and 'filename' in alert['audio_segment']:
-            audio_segment_filename = alert['audio_segment']['filename']
-        detection_data = {
-            'species_id': species.id,
-            'timestamp': datetime.fromisoformat(alert['timestamp']),
-            'confidence': alert.get('confidence'),
-            'call_type': alert.get('communication_analysis', {}).get('call_type'),
-            'emotional_state': alert.get('communication_analysis', {}).get('emotional_state'),
-            'behavioral_pattern': alert.get('behavioral_prediction', {}).get('primary_intent'),
-            # Optionals (None if not present):
-            'duration': None,
-            'frequency_range': None,
-            'amplitude': None,
-            'location_x': None,
-            'location_y': None,
-            'distance_from_runway': None,
-            'direction': None,
-            'weather_conditions': None,
-            'time_of_day': None,
-            'season': None,
-            'group_behavior': alert.get('communication_analysis', {}).get('flock_communication'),
-            'audio_segment_filename': audio_segment_filename
-        }
-        detection = db_manager.add_detection(detection_data)
-        # --- END NEW ---
-        
-        # Process strategic response
-        strategic_response = None
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            strategic_response = loop.run_until_complete(
-                strategic_service.process_bird_alert(alert)
-            )
-            loop.close()
+        if not is_translation_update:
+            # Only create new detection and alert for initial messages
+            audio_segment_filename = None
+            if 'audio_segment' in alert and alert['audio_segment'] and 'filename' in alert['audio_segment']:
+                audio_segment_filename = alert['audio_segment']['filename']
+            
+            detection_data = {
+                'species_id': species.id,
+                'timestamp': datetime.fromisoformat(alert['timestamp']),
+                'confidence': alert.get('confidence'),
+                'call_type': alert.get('communication_analysis', {}).get('call_type'),
+                'emotional_state': alert.get('communication_analysis', {}).get('emotional_state'),
+                'behavioral_pattern': alert.get('behavioral_prediction', {}).get('primary_intent'),
+                'duration': None,
+                'frequency_range': None,
+                'amplitude': None,
+                'location_x': None,
+                'location_y': None,
+                'distance_from_runway': None,
+                'direction': None,
+                'weather_conditions': None,
+                'time_of_day': None,
+                'season': None,
+                'group_behavior': alert.get('communication_analysis', {}).get('flock_communication'),
+                'audio_segment_filename': audio_segment_filename
+            }
+            detection = db_manager.add_detection(detection_data)
+            alert['detection_id'] = detection.id
 
-            if strategic_response:
-                alert['strategic_recommendation'] = strategic_response.get('strategic_recommendation')
-                logger.info(f"Strategic response generated for {alert['species']['common']}")
-        except Exception as e:
-            logger.error(f"Error generating strategic response: {e}")
+            # Process strategic response
+            strategic_response = None
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                strategic_response = loop.run_until_complete(
+                    strategic_service.process_bird_alert(alert)
+                )
+                loop.close()
 
-        # Enhanced database storage with AI insights and strategic response
-        ai_analysis_data = {
-            "communication_analysis": alert['communication_analysis'],
-            "behavioral_prediction": alert['behavioral_prediction'],
-            "ai_insights": alert['ai_insights']
-        }
-        
-        # Add strategic response to stored data
-        if strategic_response:
-            ai_analysis_data["strategic_response"] = strategic_response
-        
-        # Enhanced database storage with AI insights
-        db_alert = db_manager.add_alert({
-            "detection_id": detection.id,  # Link to detection
-            "species_id": species.id,
-            "timestamp": datetime.fromisoformat(alert['timestamp']),
-            "alert_level": alert['alert_level'],
-            "risk_score": alert['risk_score'],
-            "recommended_action": alert['recommended_action'],
-            "proximity_to_runway": 0,
-            "flight_path_intersection": False,
-            "flock_size": 1,
-            "acknowledged": False,
-            "resolved": False,
-            # Store AI analysis as JSON
-            "ai_analysis": json.dumps({
+                if strategic_response:
+                    alert['strategic_recommendation'] = strategic_response.get('strategic_recommendation')
+                    logger.info(f"Strategic response generated for {alert['species']['common']}")
+            except Exception as e:
+                logger.error(f"Error generating strategic response: {e}")
+
+            # Store AI analysis
+            ai_analysis_data = {
                 "communication_analysis": alert['communication_analysis'],
                 "behavioral_prediction": alert['behavioral_prediction'],
                 "ai_insights": alert['ai_insights']
-            })
-        })
-
-        # Store communication patterns for analysis
-        communication_history.append({
-            'timestamp': alert['timestamp'],
-            'species': alert['species']['scientific'],
-            'patterns': alert['communication_analysis'],
-            'behavior': alert['behavioral_prediction'],
-            'strategic_response': strategic_response
-        })
-
-        # Keep only last 1000 entries
-        if len(communication_history) > 1000:
-            communication_history[:] = communication_history[-1000:]
-
-        # Update behavioral patterns database
-        species_key = alert['species']['scientific']
-        if species_key not in behavioral_patterns:
-            behavioral_patterns[species_key] = {
-                'common_name': alert['species']['common'],
-                'scientific_name': species_key,
-                'intents': {},
-                'communication_types': {},
-                'risk_factors': []
             }
+            if strategic_response:
+                ai_analysis_data["strategic_response"] = strategic_response
 
-        # Update pattern statistics
-        intent = alert['behavioral_prediction']['primary_intent']
-        behavioral_patterns[species_key]['intents'][intent] = (
-            behavioral_patterns[species_key]['intents'].get(intent, 0) + 1
-        )
-
-        call_type = alert['communication_analysis']['call_type']
-        behavioral_patterns[species_key]['communication_types'][call_type] = (
-            behavioral_patterns[species_key]['communication_types'].get(call_type, 0) + 1
-        )
-
-        # Store risk factors
-        if alert['risk_score'] > 0.7:
-            behavioral_patterns[species_key]['risk_factors'].append({
-                'timestamp': alert['timestamp'],
-                'factors': alert['ai_insights']['threat_assessment'],
-                'risk_score': alert['risk_score']
+            # Add alert to database
+            db_alert = db_manager.add_alert({
+                "detection_id": detection.id,
+                "species_id": species.id,
+                "timestamp": datetime.fromisoformat(alert['timestamp']),
+                "alert_level": alert['alert_level'],
+                "risk_score": alert['risk_score'],
+                "recommended_action": alert['recommended_action'],
+                "proximity_to_runway": 0,
+                "flight_path_intersection": False,
+                "flock_size": 1,
+                "acknowledged": False,
+                "resolved": False,
+                "ai_analysis": json.dumps(ai_analysis_data)
             })
+            alert['alert_id'] = db_alert.id
+        else:
+            # For translation updates, just update the AI analysis in the database
+            if 'detection_id' in alert:
+                existing_alert = db_manager.session.query(BirdAlert).filter(
+                    BirdAlert.detection_id == alert['detection_id']
+                ).first()
+                if existing_alert:
+                    ai_analysis = json.loads(existing_alert.ai_analysis)
+                    ai_analysis['ai_insights']['call_interpretation'] = alert['ai_insights']['call_interpretation']
+                    existing_alert.ai_analysis = json.dumps(ai_analysis)
+                    db_manager.session.commit()
 
-        # Broadcast enhanced alert via WebSocket
+        # Broadcast the alert/update via WebSocket
         message = json.dumps(alert)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(manager.broadcast(message))
         loop.close()
 
-        logger.info(f"Enhanced alert processed: {alert['species']['common']} - {alert['alert_level']}")
+        logger.info(f"{'Translation update' if is_translation_update else 'Initial alert'} processed for {alert['species']['common']}")
 
     except Exception as e:
-        logger.error(f"Error processing enhanced alert: {e}")
+        logger.error(f"Error processing {'translation update' if is_translation_update else 'alert'}: {e}")
 
 
 @app.on_event("startup")
@@ -1034,10 +1001,9 @@ async def get_predator_sound_effectiveness(event_id: int, window_minutes: float 
 
         # Get actual values from SQLAlchemy columns
         event_dt = get_datetime_value(event.timestamp)
-        # Get sound_type directly from the database to ensure we have a string
-        sound_type_str = db_manager.session.scalar(
-            db_manager.session.query(PredatorSoundEvent.sound_type).filter_by(id=event_id)
-        ) or ''
+        # Get sound_type using Core select()
+        stmt = select(PredatorSoundEvent.sound_type).where(PredatorSoundEvent.id == event_id)
+        sound_type_str = db_manager.session.scalar(stmt) or ''
 
         logger.info(f"Effectiveness: Calculating for event_id={event_id}, sound_type={sound_type_str}, event_time={event_dt}")
         
@@ -1047,18 +1013,20 @@ async def get_predator_sound_effectiveness(event_id: int, window_minutes: float 
         after_start = event_dt
         after_end = event_dt + timedelta(minutes=window_minutes)
         
-        # Query BirdDetection for before/after, excluding detections during predator sound
-        before_detections = db_manager.session.query(BirdDetection).filter(
+        # Query BirdDetection using Core select()
+        before_stmt = select(BirdDetection).where(
             BirdDetection.timestamp >= before_start,
             BirdDetection.timestamp < before_end,
-            BirdDetection.during_predator_sound == False  # Only count normal detections
-        ).all()
-        
-        after_detections = db_manager.session.query(BirdDetection).filter(
+            BirdDetection.during_predator_sound == False
+        )
+        after_stmt = select(BirdDetection).where(
             BirdDetection.timestamp >= after_start,
             BirdDetection.timestamp < after_end,
-            BirdDetection.during_predator_sound == False  # Only count normal detections
-        ).all()
+            BirdDetection.during_predator_sound == False
+        )
+        
+        before_detections = db_manager.session.scalars(before_stmt).all()
+        after_detections = db_manager.session.scalars(after_stmt).all()
         
         logger.info(f"Effectiveness: Raw before count: {len(before_detections)}, after count: {len(after_detections)}")
         
@@ -1112,9 +1080,12 @@ async def get_predator_sound_effectiveness(event_id: int, window_minutes: float 
             effectiveness = max(0.0, min(1.0, (freq_before - freq_after) / freq_before))
             logger.info(f"Effectiveness calculation: freq_before={freq_before:.2f}, freq_after={freq_after:.2f}, effectiveness={effectiveness*100:.1f}%")
         
-        # Store effectiveness in the event
-        set_column_value(event, 'effectiveness', effectiveness * 100)
-        db_manager.session.commit()
+        # Store effectiveness in the event using Core update()
+        stmt = select(PredatorSoundEvent).where(PredatorSoundEvent.id == event_id)
+        event = db_manager.session.scalars(stmt).first()
+        if event:
+            event.effectiveness = effectiveness * 100
+            db_manager.session.commit()
         
         return {
             "success": True,
