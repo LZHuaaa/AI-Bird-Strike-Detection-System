@@ -229,8 +229,8 @@ const IntegratedBirdMonitor = () => {
             }
           };
 
-          // Only add birds with confidence >= 30%
-          if (newBird.confidence >= 30) {
+          // Only add birds with confidence >= 30% //confidence threshold
+          if (newBird.confidence >= 20) {
             setDetectedBirds(prev => {
               // Avoid duplicates: only add if not already present by timestamp+species
               const exists = prev.some(b =>

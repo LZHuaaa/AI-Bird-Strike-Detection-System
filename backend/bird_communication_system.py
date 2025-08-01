@@ -44,7 +44,9 @@ import shutil
 from pathlib import Path
 import logging
 from utils.gemini_utils import get_call_interpretation
-
+# Fix the transformers import
+from transformers.pipelines import pipeline
+from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,7 +60,7 @@ class AdvancedBirdCommunicationAnalyzer:
         self.FORMAT = pyaudio.paInt16
         self.CHANNELS = 1
         self.RATE = 44100
-        self.RECORD_SECONDS = 4
+        self.RECORD_SECONDS = 3  # Recording window duration
 
         # Audio storage settings
         self.AUDIO_STORAGE_DIR = os.path.join(os.path.dirname(__file__), "..", "detected_audio_segments")
@@ -520,7 +522,7 @@ class AdvancedBirdCommunicationAnalyzer:
                 temp_file,
                 lat=3.1390,  # Johor Bahru
                 lon=101.6869,
-                min_conf=0.3  #confidence threshold
+                min_conf=0.2  #confidence threshold
             )
             recording.analyze()
             alerts = []
@@ -535,8 +537,27 @@ class AdvancedBirdCommunicationAnalyzer:
                 segment_metadata = self.save_audio_segment(audio_data, detection_summary)
                 
                 for detection in recording.detections:
-                    if detection['confidence'] < 0.3:  #confidence threshold
+                    if detection['confidence'] < 0.2:  #confidence threshold
                         continue  # Skip low-confidence detections
+                    
+                    # Check if this is a predator sound detection
+                    is_predator = False
+                    if self.is_predator_sound_active() and self.predator_sounds:
+                        predator_type = self.predator_sounds.get_current_sound_type()
+                        if predator_type:
+                            predator_keywords = {
+                                'hawk_screech': ['hawk', 'Accipiter', 'Buteo', 'Falco'],
+                                'eagle_cry': ['eagle', 'Aquila', 'Haliaeetus'],
+                                'falcon_call': ['falcon', 'Falco'],
+                                'owl_hoot': ['owl', 'Strix', 'Bubo']
+                            }
+                            keywords = predator_keywords.get(predator_type, [])
+                            species_name = f"{detection['common_name']} {detection['scientific_name']}".lower()
+                            is_predator = any(keyword.lower() in species_name for keyword in keywords)
+                    
+                    # Skip predator sound detections when predator sounds are playing
+                    if self.is_predator_sound_active() and is_predator:
+                        continue  # Skip this detection entirely
                     
                     # Analyze communication patterns
                     species_info = {
@@ -591,7 +612,8 @@ class AdvancedBirdCommunicationAnalyzer:
                             'threat_assessment': self.assess_threat_level(communication_patterns, behavioral_intent),
                             'recommended_monitoring': self.get_monitoring_recommendations(behavioral_intent)
                         },
-                        'translation_pending': True  # Flag to indicate translation is coming
+                        'translation_pending': True,  # Flag to indicate translation is coming
+                        'during_predator_sound': self.is_predator_sound_active()  # Track predator sound status
                     }
 
                     # Ensure audio_segment['filename'] is present if segment_metadata exists
@@ -618,10 +640,8 @@ class AdvancedBirdCommunicationAnalyzer:
                     detection_id = self.db_manager.add_detection(detection_data)
                     alert['detection_id'] = detection_id
 
-                    # Only add to alerts list if not during predator sound playback
-                    if not self.is_predator_sound_active():
-                        alerts.append(alert)
-
+                    # Process all non-predator detections
+                    alerts.append(alert)
                     # Send initial alert immediately through all callbacks
                     for callback in self.alert_callbacks:
                         callback(alert)

@@ -136,18 +136,18 @@ const BehaviorAnalytics = () => {
       Object.entries(patterns.patterns).forEach(([species, data]) => {
         const totalDetections = Object.values((data as any).intents || {}).reduce((sum: number, count) => sum + (count as number), 0);
 
-        if ((totalDetections as number) > 3) { // Only show species with more than 3 detections
+        if ((totalDetections as number) > 0) { // Only show species with more than 3 detections
           migrationSpecies.push({
             species: species.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
             peak: getCurrentSeasonPeak(),
-            status: (totalDetections as number) > 50 ? 'Active' : (totalDetections as number) > 20 ? 'Starting' : 'Upcoming',
+            status: (totalDetections as number) > 10 ? 'Active' : (totalDetections as number) > 5 ? 'Starting' : 'Upcoming',
             count: totalDetections
           });
         }
       });
     }
 
-    setMigrationData(migrationSpecies.slice(0, 3)); // Show top 3
+    setMigrationData(migrationSpecies.slice(0, 4)); // Show top 3
   };
 
   // Generate behavioral insights from AI data

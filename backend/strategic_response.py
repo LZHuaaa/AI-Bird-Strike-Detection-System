@@ -109,6 +109,9 @@ class PredatorSoundLibrary:
 
         self._playback_thread = None
         self._stop_playback_event = threading.Event()
+        
+        # Track currently playing sound type
+        self.current_sound_type = None
 
     def set_communication_analyzer(self, analyzer):
         """Set reference to communication analyzer"""
@@ -189,6 +192,9 @@ class PredatorSoundLibrary:
             sound = self.sound_cache[sound_name]
             logger.info(f"🔊 Sound object retrieved: {sound}")
             sound.set_volume(volume)
+            
+            # Set current sound type
+            self.current_sound_type = sound_name
 
             def playback_loop():
                 try:
@@ -231,6 +237,13 @@ class PredatorSoundLibrary:
             logger.error(f"❌ Error stopping pygame mixer: {e}")
         if self.communication_analyzer:
             self.communication_analyzer.update_predator_status(False)
+        
+        # Clear current sound type
+        self.current_sound_type = None
+
+    def get_current_sound_type(self) -> Optional[str]:
+        """Get the currently playing sound type"""
+        return self.current_sound_type
 
 class AIDecisionEngine:
     """AI-powered decision making for strategic responses"""

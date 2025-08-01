@@ -271,9 +271,12 @@ def enhanced_websocket_alert_handler(alert: Dict):
                     BirdAlert.detection_id == alert['detection_id']
                 ).first()
                 if existing_alert:
-                    ai_analysis = json.loads(existing_alert.ai_analysis)
+                    # Convert SQLAlchemy Column to string
+                    current_analysis = str(existing_alert.ai_analysis) if existing_alert.ai_analysis else '{}'
+                    ai_analysis = json.loads(current_analysis)
                     ai_analysis['ai_insights']['call_interpretation'] = alert['ai_insights']['call_interpretation']
-                    existing_alert.ai_analysis = json.dumps(ai_analysis)
+                    # Update using string value
+                    existing_alert.ai_analysis = str(json.dumps(ai_analysis))
                     db_manager.session.commit()
 
         # Broadcast the alert/update via WebSocket
@@ -284,6 +287,49 @@ def enhanced_websocket_alert_handler(alert: Dict):
         loop.close()
 
         logger.info(f"{'Translation update' if is_translation_update else 'Initial alert'} processed for {alert['species']['common']}")
+
+        # Store in communication history
+        communication_history.append({
+            'timestamp': alert['timestamp'],
+            'species': alert['species']['scientific'],
+            'patterns': alert['communication_analysis'],
+            'behavior': alert['behavioral_prediction'],
+            'strategic_response': strategic_response
+        })
+
+        # Keep only last 1000 entries
+        if len(communication_history) > 1000:
+            communication_history[:] = communication_history[-1000:]
+
+        # Update behavioral patterns database
+        species_key = alert['species']['scientific']
+        if species_key not in behavioral_patterns:
+            behavioral_patterns[species_key] = {
+                'common_name': alert['species']['common'],
+                'scientific_name': species_key,
+                'intents': {},
+                'communication_types': {},
+                'risk_factors': []
+            }
+
+        # Update pattern statistics
+        intent = alert['behavioral_prediction']['primary_intent']
+        behavioral_patterns[species_key]['intents'][intent] = (
+            behavioral_patterns[species_key]['intents'].get(intent, 0) + 1
+        )
+
+        call_type = alert['communication_analysis']['call_type']
+        behavioral_patterns[species_key]['communication_types'][call_type] = (
+            behavioral_patterns[species_key]['communication_types'].get(call_type, 0) + 1
+        )
+
+        # Store risk factors if high risk
+        if alert['risk_score'] > 0.7:
+            behavioral_patterns[species_key]['risk_factors'].append({
+                'timestamp': alert['timestamp'],
+                'factors': alert['ai_insights']['threat_assessment'],
+                'risk_score': alert['risk_score']
+            })
 
     except Exception as e:
         logger.error(f"Error processing {'translation update' if is_translation_update else 'alert'}: {e}")
@@ -499,15 +545,24 @@ async def get_recent_alerts():
 async def get_communication_patterns():
     """Get communication patterns analysis"""
     try:
+        # Process patterns by species
+        processed_patterns = {}
+        for species_key, data in behavioral_patterns.items():
+            processed_patterns[species_key] = {
+                'common_name': data.get('common_name', 'Unknown'),
+                'scientific_name': data.get('scientific_name', species_key),
+                'intents': data.get('intents', {}),
+                'communication_types': data.get('communication_types', {})
+            }
+        
         return {
-            "patterns": behavioral_patterns,
+            "patterns": processed_patterns,
             "history_count": len(communication_history),
             "analysis_timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Error getting communication patterns: {e}")
         return {"patterns": {}, "history_count": 0, "error": str(e)}
-
 
 @app.get("/api/species/{species_name}/behavior")
 async def get_species_behavior(species_name: str):
@@ -535,56 +590,58 @@ async def get_species_behavior(species_name: str):
         logger.error(f"Error getting species behavior: {e}")
         return {"species": species_name, "error": str(e)}
 
-
 @app.get("/api/ai-insights")
 async def get_ai_insights():
     """Get AI system insights and statistics"""
     try:
-        # Calculate insights from communication history
-        recent_history = communication_history[-100:]  # Last 100 detections
+        # Calculate insights from recent history (last 100 entries)
+        recent_history = communication_history[-100:] if communication_history else []
         
         insights = {
             "total_communications_analyzed": len(communication_history),
             "recent_activity": len(recent_history),
             "species_diversity": len(set(h['species'] for h in recent_history)),
-            "alert_level_distribution": {},
             "behavioral_intent_distribution": {},
+            "alert_level_distribution": {},
             "communication_type_distribution": {},
-            "risk_trends": [],
             "ai_model_performance": {
-                "classification_accuracy": 0.85,  # Placeholder
-                "behavioral_prediction_confidence": 0.78,  # Placeholder
-                "communication_analysis_success_rate": 0.92  # Placeholder
+                "classification_accuracy": 0.85,  # Example values
+                "behavioral_prediction_confidence": 0.78,
+                "communication_analysis_success_rate": 0.92
             }
         }
         
-        # Analyze recent patterns
+        # Process recent patterns
         for item in recent_history:
-            # Alert level distribution
-            patterns = item.get('patterns', {})
-            urgency = patterns.get('urgency_level', 'unknown')
-            insights['alert_level_distribution'][urgency] = (
-                insights['alert_level_distribution'].get(urgency, 0) + 1
-            )
+            # Count behavioral intents
+            if 'behavior' in item and 'primary_intent' in item['behavior']:
+                intent = item['behavior']['primary_intent']
+                insights['behavioral_intent_distribution'][intent] = (
+                    insights['behavioral_intent_distribution'].get(intent, 0) + 1
+                )
             
-            # Behavioral intent distribution
-            behavior = item.get('behavior', {})
-            intent = behavior.get('primary_intent', 'unknown')
-            insights['behavioral_intent_distribution'][intent] = (
-                insights['behavioral_intent_distribution'].get(intent, 0) + 1
-            )
+            # Count alert levels
+            if 'patterns' in item and 'urgency_level' in item['patterns']:
+                level = item['patterns']['urgency_level']
+                insights['alert_level_distribution'][level] = (
+                    insights['alert_level_distribution'].get(level, 0) + 1
+                )
             
-            # Communication type distribution
-            call_type = patterns.get('call_type', 'unknown')
-            insights['communication_type_distribution'][call_type] = (
-                insights['communication_type_distribution'].get(call_type, 0) + 1
-            )
+            # Count communication types
+            if 'patterns' in item and 'call_type' in item['patterns']:
+                call_type = item['patterns']['call_type']
+                insights['communication_type_distribution'][call_type] = (
+                    insights['communication_type_distribution'].get(call_type, 0) + 1
+                )
         
         return insights
         
     except Exception as e:
         logger.error(f"Error getting AI insights: {e}")
-        return {"error": str(e)}
+        return {
+            "total_communications_analyzed": 0,
+            "error": str(e)
+        }
 
 
 @app.get("/api/stats")
@@ -1084,7 +1141,8 @@ async def get_predator_sound_effectiveness(event_id: int, window_minutes: float 
         stmt = select(PredatorSoundEvent).where(PredatorSoundEvent.id == event_id)
         event = db_manager.session.scalars(stmt).first()
         if event:
-            event.effectiveness = effectiveness * 100
+            # Convert float to appropriate type for Column
+            event.effectiveness = str(effectiveness * 100)
             db_manager.session.commit()
         
         return {

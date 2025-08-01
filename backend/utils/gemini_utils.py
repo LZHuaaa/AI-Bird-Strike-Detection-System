@@ -1,6 +1,6 @@
 import google.generativeai as genai
 
-API_KEY = "AIzaSyCcGj558R7UOLivs36zkcMpq_EuarwvaI4"
+API_KEY = "AIzaSyBOlazCHGU-yrJpTjpg3L5VDb2nawx4uQo"
 genai.configure(api_key=API_KEY)
 
 def get_call_interpretation(bird_name, *, call_type=None, emotion=None, context=None):
@@ -42,5 +42,27 @@ def get_bird_encyclopedia(bird_name):
     )
     llm = genai.GenerativeModel("gemini-1.5-flash-latest")
     return llm.generate_content(prompt).text.strip()
+
+
+
+def test_gemini_api():
+    try:
+        # Initialize model
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Simple prompt to test
+        response = model.generate_content("Hello! Can you tell me a fun bird fact?")
+        
+        # Print response
+        print("✅ API key is working!")
+        print("Gemini says:", response.text.strip())
+        
+    except Exception as e:
+        print("❌ Error while testing Gemini API key:")
+        print(e)
+
+# Run the test
+#if __name__ == "__main__":
+#    test_gemini_api()
 
 

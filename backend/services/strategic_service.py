@@ -149,9 +149,22 @@ class StrategicResponseService:
                 None, 
                 self.strategic_system.get_system_status
             )
+            
+            # Add predator sounds information
+            predator_sounds_status = {}
+            if self.strategic_system and self.strategic_system.predator_sounds:
+                predator_sounds = self.strategic_system.predator_sounds
+                predator_sounds_status = {
+                    "status": "active",
+                    "sounds_loaded": len(predator_sounds.sound_cache),
+                    "available_sounds": list(predator_sounds.sound_cache.keys()),
+                    "current_sound": predator_sounds.get_current_sound_type()
+                }
+            
             return {
                 "status": "active",
                 "strategic_system": status,
+                "predator_sounds": predator_sounds_status,
                 "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
@@ -173,7 +186,8 @@ class StrategicResponseService:
                 "status": "active",
                 "sounds_loaded": len(predator_sounds.sound_cache),
                 "available_sounds": list(predator_sounds.sound_cache.keys()),
-                "predator_mappings": predator_sounds.predator_mappings
+                "predator_mappings": predator_sounds.predator_mappings,
+                "current_sound": predator_sounds.get_current_sound_type()
             }
         except Exception as e:
             logger.error(f"Error getting predator sounds status: {e}")
