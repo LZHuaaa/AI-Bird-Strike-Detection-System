@@ -103,10 +103,10 @@ Special monitoring for Malaysian airport high-risk species:
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.  
-git clone https://github.com/LZHuaaa/Avian-Intel-Bridge-New.git
+git clone https://github.com/LZHuaaa/AI-Bird-Strike-Detection-System.git
 
 # Step 2: Navigate to the project directory.  
-cd Avian-Intel-Bridge-New
+cd AI-Bird-Strike-Detection-System
 
 # Step 3: Install frontend dependencies.  
 npm install
