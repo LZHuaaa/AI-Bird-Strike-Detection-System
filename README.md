@@ -7,6 +7,10 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
 
 <p align="center"><em>Real-world incident highlighting the dangers of bird strikes</em></p>
 
+![Screenshot_1-8-2025_16509_localhost](https://github.com/user-attachments/assets/e3e55024-072f-4e8e-b1ce-0de98ca9e21d)
+![Screenshot_1-8-2025_165117_localhost](https://github.com/user-attachments/assets/96781c11-e181-4661-ab68-77b79bf4fec1)
+![Screenshot_1-8-2025_165147_localhost](https://github.com/user-attachments/assets/b14327d1-6e54-4d02-8c7e-d0dd8acf5a8b)
+
 ## 🚀 Key Features
 
 ### 🎤 Audio Analysis & Detection
