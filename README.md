@@ -1,7 +1,7 @@
 # 🐦 Avian Intel Bridge - Bird Strike Detection System
 
 ## 🌟 Overview
-The Avian Intelligence Bridge is a cutting-edge bird detection and communication analysis system designed for airport safety. It combines multiple AI models to identify, analyze, and interpret bird behavior in real time, with a special focus on high-risk species in airport environments.
+The Avian Intelligence Bridge is a cutting-edge bird detection and communication analysis system designed for airport safety. It combines multiple AI models to identify, analyze, and interpret bird behavior in real time, with a special focus on high-risk species in airport environments. **(This project was developed for the FutureHack Hackathon and successfully made it into the Top 10 finalists🌞)**
 
 <img width="898" height="559" alt="image" src="https://github.com/user-attachments/assets/cc59abdd-8062-4515-8208-27efdc110ab7" />
 
@@ -9,6 +9,7 @@ The Avian Intelligence Bridge is a cutting-edge bird detection and communication
 
 ![Screenshot_1-8-2025_16509_localhost](https://github.com/user-attachments/assets/e3e55024-072f-4e8e-b1ce-0de98ca9e21d)
 ![Screenshot_1-8-2025_165117_localhost](https://github.com/user-attachments/assets/96781c11-e181-4661-ab68-77b79bf4fec1)
+<img width="1755" height="2529" alt="image" src="https://github.com/user-attachments/assets/17c37255-2084-4b3d-89b6-4a13b5db7f70" />
 ![Screenshot_1-8-2025_165147_localhost](https://github.com/user-attachments/assets/b14327d1-6e54-4d02-8c7e-d0dd8acf5a8b)
 
 ## 🚀 Key Features
